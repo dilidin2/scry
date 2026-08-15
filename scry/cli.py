@@ -1,0 +1,122 @@
+"""scry: let an LLM "see" TikTok and Instagram (CPU-only pipeline).
+
+Usage:
+  scry tiktok <url> [options]
+  scry instagram <url> [options]
+  scry auto <url> [options]       (detects the platform automatically)
+  scry setup                      (one-time: downloads the Camoufox browser)
+
+Common options:
+  --max-comments N     comments to analyze (default 30)
+  --no-comments        skip comments+consensus
+  --stt-model NAME     whisper: base|small|medium|large-v3 (default small)
+  --language CODE      force STT language (default: auto-detect)
+  --no-stt             skip transcription
+  --no-ocr             skip OCR (instagram)
+  --no-download        skip media download (metadata+comments only)
+  --cookies FILE       Netscape cookies file (for content that requires login)
+  --json               print only the JSON to stdout
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="scry", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    for name in ("tiktok", "instagram", "auto"):
+        sp = sub.add_parser(name, help=f"{name} pipeline")
+        sp.add_argument("url")
+        _add_opts(sp)
+    for name in ("instagram", "auto"):
+        sub.choices[name].add_argument("--no-browser",
+            action="store_true",
+            help="do not use the browser fallback (Camoufox)")
+        sub.choices[name].add_argument("--headless",
+            action="store_true",
+            help="browser without a window (more detectable, only if needed)")
+    sub.add_parser("setup", help="one-time setup: download the Camoufox browser")
+    return p
+
+
+def _add_opts(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument("--max-comments", type=int, default=30)
+    sp.add_argument("--no-comments", action="store_true")
+    sp.add_argument("--stt-model", default="small",
+                    choices=["tiny", "base", "small", "medium", "large-v3"])
+    sp.add_argument("--language", default=None, help="e.g. it, en (default: auto)")
+    sp.add_argument("--no-stt", action="store_true")
+    sp.add_argument("--no-ocr", action="store_true")
+    sp.add_argument("--no-download", action="store_true")
+    sp.add_argument("--cookies", default=None, help="Netscape cookies file")
+    sp.add_argument("--json", action="store_true", help="JSON only on stdout")
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    cmd = args.cmd
+
+    if cmd == "setup":
+        import subprocess
+        from .common import log
+        log("Setup: downloading the Camoufox browser (one-time, ~150MB)...")
+        t0 = time.time()
+        try:
+            subprocess.run([sys.executable, "-m", "camoufox", "fetch"], check=True)
+        except subprocess.CalledProcessError as e:
+            log(f"Setup: failed ({e})")
+            return 1
+        log(f"Setup: done in {time.time()-t0:.0f}s")
+        return 0
+
+    platform = cmd
+
+    if platform == "auto":
+        from .common import classify_url
+        info = classify_url(args.url)
+        if not info:
+            print(json.dumps({"error": f"Unrecognized URL: {args.url}"}), file=sys.stderr)
+            return 2
+        platform = info["platform"]
+
+    kwargs = dict(
+        do_stt=not args.no_stt,
+        do_comments=not args.no_comments,
+        max_comments=args.max_comments,
+        stt_model=args.stt_model,
+        language=args.language,
+        cookies=args.cookies,
+    )
+
+    if platform == "tiktok":
+        from .tiktok import process
+        kwargs["do_download"] = not args.no_download
+        result, md = process(args.url, **kwargs)
+    else:
+        from .instagram import process
+        kwargs["do_ocr"] = not args.no_ocr
+        kwargs["use_browser"] = not getattr(args, "no_browser", False)
+        kwargs["headless"] = getattr(args, "headless", False)
+        result, md = process(args.url, **kwargs)
+
+    from .common import save_outputs, data_note
+    paths = save_outputs(f"{platform}-{result.get('id') or result.get('shortcode')}",
+                         md, result)
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(md)
+        print(f"\n[saved: {paths['markdown']}]")
+        print(f"[{data_note()}]")
+
+    return 0 if not result.get("error") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

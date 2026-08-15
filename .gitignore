@@ -1,0 +1,17 @@
+# sessions (contain real account cookies)
+*cookies*.txt
+*.cookies
+
+# runtime / cache
+.venv/
+__pycache__/
+*.pyc
+downloads/
+output/
+dist/
+*.egg-info/
+
+# editor/os
+.vscode/
+.idea/
+.DS_Store
