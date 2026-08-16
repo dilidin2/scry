@@ -320,7 +320,8 @@ def download_media(media: dict, code: str, session, cookies: str | None,
 # Full pipeline
 # ---------------------------------------------------------------------------
 def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
-            do_comments: bool = True, max_comments: int = 30,
+            do_download: bool = True, do_comments: bool = True,
+            max_comments: int = 30,
             stt_model: str = "small", language: str | None = None,
             cookies: str | None = None, use_browser: bool = True,
             headless: bool = False) -> tuple[dict, str]:
@@ -413,9 +414,12 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
     }
 
     # ---- Media download ----------------------------------------------------
-    log(f"Instagram: downloading media ({media['type']})...")
-    dl = download_media(media, code, session, ck,
-                        use_browser=use_browser, headless=headless)
+    if do_download:
+        log(f"Instagram: downloading media ({media['type']})...")
+        dl = download_media(media, code, session, ck,
+                            use_browser=use_browser, headless=headless)
+    else:
+        dl = {"files": [], "video_path": None, "note": "skipped (--no-download)"}
     result["download"] = dl
 
     video_path = dl.get("video_path")
@@ -442,9 +446,11 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
             result["transcript"] = transcribe(wav, model=stt_model, language=language)
         else:
             result["transcript"] = {"error": "audio extraction failed"}
+    if not do_download and do_stt:
+        result["stt"] = {"skipped": "download disabled"}
 
     # ---- Visual understanding (opt-in via -v: local VLM) --------------------
-    if do_vision:
+    if do_vision and do_download:
         from . import vision
         if vision.vision_available():
             vis_out: dict = {}
@@ -467,6 +473,9 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
             result["vision_error"] = (
                 "vision requested (-v) but not available: "
                 "pip install 'scry-social[vision]' then run 'scry setup --vision'")
+    elif do_vision:
+        result["vision_note"] = ("vision skipped: no media downloaded "
+                                  "(--no-download)")
     else:
         result["vision_note"] = "vision skipped (opt-in: run with -v)"
 

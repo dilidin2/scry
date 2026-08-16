@@ -161,6 +161,7 @@ def main() -> int:
     else:
         from .instagram import process
         kwargs["do_vision"] = args.vision
+        kwargs["do_download"] = not args.no_download
         kwargs["use_browser"] = not getattr(args, "no_browser", False)
         kwargs["headless"] = getattr(args, "headless", False)
         result, md = process(args.url, **kwargs)
