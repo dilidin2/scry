@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-# MODELS_DIR: model weights (whisper, rapidocr). PERSISTENT: lives in the
+# MODELS_DIR: model weights (whisper, LFM2.5-VL). PERSISTENT: lives in the
 #             user cache (~/.cache/scry by default) so it survives reinstalls
 #             and reboots. Override: SCRY_CACHE_DIR.
 # DATA_DIR: per-run data (downloads/ + output/). EPHEMERAL by default in

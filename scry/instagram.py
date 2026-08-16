@@ -1,4 +1,4 @@
-"""Instagram pipeline: link -> media (photo/video/carousel) -> OCR/STT -> (+ comments).
+"""Instagram pipeline: link -> media (photo/video/carousel) -> STT/VLM -> (+ comments).
 
 Tiered strategy:
   Tier 1: GET the post page with curl_cffi (chrome impersonation)
@@ -319,7 +319,7 @@ def download_media(media: dict, code: str, session, cookies: str | None,
 # ---------------------------------------------------------------------------
 # Full pipeline
 # ---------------------------------------------------------------------------
-def process(url: str, *, do_stt: bool = True, do_ocr: bool = True,
+def process(url: str, *, do_stt: bool = True, do_vision: bool = True,
             do_comments: bool = True, max_comments: int = 30,
             stt_model: str = "small", language: str | None = None,
             cookies: str | None = None, use_browser: bool = True,
@@ -433,24 +433,28 @@ def process(url: str, *, do_stt: bool = True, do_ocr: bool = True,
         else:
             result["transcript"] = {"error": "audio extraction failed"}
 
-    # ---- OCR (photos / video frames) ------------------------------------------
-    if do_ocr:
-        ocr_out = {}
-        if images:
-            from .ocr import ocr_image
-            for i, img in enumerate(images, 1):
-                log(f"Instagram: OCR image {i}/{len(images)}...")
-                r = ocr_image(img)
-                if r["text"]:
-                    ocr_out[f"image_{i}"] = r["text"]
-        if video_path:
-            from .ocr import ocr_video
-            log("Instagram: OCR video frames...")
-            vr = ocr_video(video_path, n_frames=3)
-            if vr["text"]:
-                ocr_out["video_frames"] = vr["text"]
-        if ocr_out:
-            result["ocr"] = ocr_out
+    # ---- Visual understanding (VLM: description + on-screen text) ------------
+    if do_vision:
+        from . import vision
+        if vision.vision_available():
+            vis_out: dict = {}
+            if images:
+                for i, img in enumerate(images, 1):
+                    log(f"Instagram: VLM image {i}/{len(images)}...")
+                    r = vision.describe_image(img)
+                    if r.get("text"):
+                        vis_out[f"image_{i}"] = r["text"]
+            if video_path:
+                log("Instagram: VLM on video frames...")
+                vr = vision.describe_video(video_path, n_frames=3)
+                if vr.get("text"):
+                    vis_out["video_frames"] = vr["text"]
+            if vis_out:
+                result["vision"] = vis_out
+        else:
+            result["vision_note"] = (
+                "vision not active: pip install 'scry-social[vision]' "
+                "and then run 'scry setup --vision'")
 
     # ---- Comments -------------------------------------------------------------
     if do_comments:
@@ -502,11 +506,14 @@ def render(r: dict) -> str:
     if dl and dl.get("note") and dl["note"] != "ok":
         L.append(f"\n> ⚠️ {dl['note']}")
 
-    o = r.get("ocr") or {}
+    o = r.get("vision") or {}
     if o:
-        L.append("\n## Text in images (OCR)")
+        from .vision import MODEL_LABEL
+        L.append(f"\n## Visual ({MODEL_LABEL})")
         for k, v in o.items():
             L.append(f"\n**{k}:**\n\n{v}")
+    elif r.get("vision_note"):
+        L.append(f"\n> ℹ️ {r['vision_note']}")
 
     c = r.get("comments") or []
     if c:

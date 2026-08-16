@@ -92,3 +92,30 @@ Le reply annidate collassate su IG non sono nel DOM (servirebbero click
 addizionali per ogni thread: costo/beneficio negativo per uso sporadico).
 **Nota**: il bias verso i top-level viene dichiarato nell'output
 (comments_source + nota nei limiti SKILL).
+
+## 11. Vision = LFM2.5-VL-1.6B Q8_0 via llama-cpp-python (sostituisce RapidOCR)
+**Decisione**: extra opzionale `[vision]` = `llama-cpp-python` + `huggingface-hub`.
+Modello GGUF LiquidAI/LFM2.5-VL-1.6B **Q8_0** (~1.7GB) + `mmproj-Q8_0` (~0.4GB),
+downloadato da `scry setup -v` in `~/.cache/scry/models/lfm2.5-vl-1.6b/`.
+`scry/ocr.py` (RapidOCR/onnxruntime) eliminato: il VLM fa descrizione +
+trascrizione del testo in un solo passaggio.
+**Ragione**:
+- Niente torch (troppo pesante): GGUF + libmtmd compilate dentro
+  llama-cpp-python (build da source al pip install, serve C compiler).
+- Quant Q8_0 "non aggressiva": modello da 1.6B, quant aggressive
+  (Q4) farebbero perdere intelligenza; Q8_0 ≈ quasi lossless, RAM non è
+  problema (30GB).
+- LFM2.5-VL scelta vs moondream/smolvlm2/florence-2: architettura moderna
+  (2025), supportata nativamente da libmtmd/MTMDChatHandler, OCR+caption
+  solidi, veloce su CPU (~5-20s/immagine su 16C a seconda dei slice).
+**System prompt**: volutamente corto e senza vincoli "misurabili"
+(il modello piccolo non conta i frasi): "Describe this image, then
+transcribe all readable text in it verbatim. No markdown. No preamble.
+No translation of the text. No guesswork." — verificato su immagine
+sintetica IT: trascrive tutto verbatim; su foto senza testo: descrizione
+pulita, senza inventare testo.
+**Nota licenza**: LFM Open License v1.0 (Apache-style, commercial use
+soglia $10M/anno) — ok per uso personale; il codice resta MIT, il
+modello si scarica a runtime.
+**Costi misurati**: selfie 1200x1600 → 6 slice + overview ≈ 18s;
+frame video 480x640 ≈ 4-5s. 3 frame/reel ≈ 30-35s totali.

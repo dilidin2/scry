@@ -5,6 +5,8 @@ Usage:
   scry instagram <url> [options]
   scry auto <url> [options]       (detects the platform automatically)
   scry setup                      (one-time: downloads the Camoufox browser)
+  scry setup -v                   (one-time: downloads the vision model, ~2.1GB)
+  scry setup --all                (both)
 
 Common options:
   --max-comments N     comments to analyze (default 30)
@@ -12,7 +14,7 @@ Common options:
   --stt-model NAME     whisper: base|small|medium|large-v3 (default small)
   --language CODE      force STT language (default: auto-detect)
   --no-stt             skip transcription
-  --no-ocr             skip OCR (instagram)
+  --no-vision          skip VLM visual analysis (instagram)
   --no-download        skip media download (metadata+comments only)
   --cookies FILE       Netscape cookies file (for content that requires login)
   --json               print only the JSON to stdout
@@ -40,7 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
         sub.choices[name].add_argument("--headless",
             action="store_true",
             help="browser without a window (more detectable, only if needed)")
-    sub.add_parser("setup", help="one-time setup: download the Camoufox browser")
+    sp = sub.add_parser("setup",
+                        help="one-time setup: download the Camoufox browser")
+    sp.add_argument("-v", "--vision", action="store_true",
+                    help="download the vision model (LFM2.5-VL-1.6B Q8_0)")
+    sp.add_argument("--all", action="store_true",
+                    help="download both browser and vision model")
     return p
 
 
@@ -51,7 +58,7 @@ def _add_opts(sp: argparse.ArgumentParser) -> None:
                     choices=["tiny", "base", "small", "medium", "large-v3"])
     sp.add_argument("--language", default=None, help="e.g. it, en (default: auto)")
     sp.add_argument("--no-stt", action="store_true")
-    sp.add_argument("--no-ocr", action="store_true")
+    sp.add_argument("--no-vision", action="store_true")
     sp.add_argument("--no-download", action="store_true")
     sp.add_argument("--cookies", default=None, help="Netscape cookies file")
     sp.add_argument("--json", action="store_true", help="JSON only on stdout")
@@ -64,15 +71,31 @@ def main() -> int:
     if cmd == "setup":
         import subprocess
         from .common import log
-        log("Setup: downloading the Camoufox browser (one-time, ~150MB)...")
-        t0 = time.time()
-        try:
-            subprocess.run([sys.executable, "-m", "camoufox", "fetch"], check=True)
-        except subprocess.CalledProcessError as e:
-            log(f"Setup: failed ({e})")
-            return 1
-        log(f"Setup: done in {time.time()-t0:.0f}s")
-        return 0
+        want_browser = not (args.vision and not args.all)
+        want_vision = args.vision or args.all
+        if not want_browser and not want_vision:
+            want_browser = True  # bare `scry setup` = browser (legacy behavior)
+        rc = 0
+        if want_browser:
+            log("Setup: downloading the Camoufox browser (one-time, ~150MB)...")
+            t0 = time.time()
+            try:
+                subprocess.run([sys.executable, "-m", "camoufox", "fetch"],
+                               check=True)
+            except subprocess.CalledProcessError as e:
+                log(f"Setup: browser fetch failed ({e})")
+                rc = 1
+            log(f"Setup: browser done in {time.time()-t0:.0f}s")
+        if want_vision:
+            try:
+                from .vision import setup_vision
+                t0 = time.time()
+                setup_vision()
+                log(f"Setup: vision model done in {time.time()-t0:.0f}s")
+            except Exception as e:
+                log(f"Setup: vision setup failed ({e})")
+                rc = 1
+        return rc
 
     platform = cmd
 
@@ -99,7 +122,7 @@ def main() -> int:
         result, md = process(args.url, **kwargs)
     else:
         from .instagram import process
-        kwargs["do_ocr"] = not args.no_ocr
+        kwargs["do_vision"] = not args.no_vision
         kwargs["use_browser"] = not getattr(args, "no_browser", False)
         kwargs["headless"] = getattr(args, "headless", False)
         result, md = process(args.url, **kwargs)

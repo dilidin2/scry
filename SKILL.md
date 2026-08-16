@@ -1,9 +1,10 @@
 ---
 name: scry
 description: Scrape TikTok videos and Instagram posts (videos, reels, photos,
-  carousels) and turn them into LLM-readable intel: transcripts (STT), text
-  from images (OCR), captions, stats, and top comments with a community
-  consensus/reliability score. Use this skill whenever the user shares a
+  carousels) and turn them into LLM-readable intel: transcripts (STT), visual
+  understanding (image description + on-screen text via a small VLM),
+  captions, stats, and top comments with a community consensus/reliability
+  score. Use this skill whenever the user shares a
   TikTok or Instagram link and wants to know what's in it, what it says,
   what people think about it, or wants its content analyzed/summarized.
   Also use when the user asks to "watch" a TikTok/IG post, transcribe a
@@ -15,9 +16,10 @@ description: Scrape TikTok videos and Instagram posts (videos, reels, photos,
 # scry
 
 Let an LLM "see" TikTok and Instagram: download the content, transcribe
-the audio (STT), read the text in the images (OCR), collect metadata and
-top comments with a consensus/reliability score. Everything CPU-only
-(no GPU: the GPU belongs to llama.cpp).
+the audio (STT), describe the images and read the on-screen text (small
+VLM, LFM2.5-VL via llama.cpp), collect metadata and top comments with a
+consensus/reliability score. Everything CPU-only (no GPU: the GPU
+belongs to llama.cpp).
 
 **Scraping tiers** (lightest to heaviest):
 - **TikTok**: curl_cffi (TLS impersonation Chrome 136) → page with embedded
@@ -35,13 +37,14 @@ the window (more fragile).
 
 ```bash
 cd /home/matteo/scry
-uv venv .venv && uv pip install -e .   # + ffmpeg (apt install ffmpeg)
-.venv/bin/scry setup                   # one-time: downloads the Camoufox browser
+uv venv .venv && uv pip install -e ".[vision]"   # + ffmpeg (apt install ffmpeg)
+.venv/bin/scry setup --all           # one-time: Camoufox browser + vision model
 ```
 
-External dependency: system `ffmpeg`/`ffprobe`.
-Models (whisper ~600MB, OCR ~15MB) download on first use and are cached
-persistently in `~/.cache/scry/models/`.
+External dependency: system `ffmpeg`/`ffprobe`. A C compiler is needed at
+install time (llama-cpp-python compiles ggml from source).
+Models (whisper ~600MB, LFM2.5-VL-1.6B Q8_0 ~2.1GB) download on first use
+and are cached persistently in `~/.cache/scry/models/`.
 
 ## Commands
 
@@ -49,7 +52,7 @@ persistently in `~/.cache/scry/models/`.
 # TikTok: download + transcription + comments + consensus
 .venv/bin/scry tiktok "https://www.tiktok.com/@user/video/1234567890"
 
-# Instagram (reel/video -> STT + frame OCR; photo/carousel -> OCR)
+# Instagram (reel/video -> STT + VLM frames; photo/carousel -> VLM)
 .venv/bin/scry instagram "https://www.instagram.com/reel/XXXX/"
 
 # Platform autodetect
@@ -63,7 +66,7 @@ persistently in `~/.cache/scry/models/`.
 #   --no-comments       skip comments+consensus
 #   --stt-model NAME    tiny|base|small|medium|large-v3 (default small)
 #   --language it       force the STT language (default auto-detect)
-#   --no-ocr            skip OCR (instagram)
+#   --no-vision         skip VLM visual analysis (instagram)
 #   --no-download       skip download+STT
 #   --cookies FILE      Netscape cookies for content that requires login
 #   --json              stdout only JSON (for further processing)
@@ -116,8 +119,11 @@ The markdown has stable sections:
 3. **Transcript (STT)**: what is said in the video. Includes model,
    detected language, realtime factor. If empty: the video has no speech
    (or only music).
-4. **Text in images (OCR)** [Instagram]: on-screen text (hooks, claims,
-   CTAs). This is often the reel's real "message".
+4. **Visual (VLM)** [Instagram]: concise description of each image/frame
+   plus verbatim on-screen text (hooks, claims, CTAs). This is often the
+   reel's real "message". The 1.6B model is small: treat descriptions and
+   transcribed text as a signal, and double-check important numbers/words
+   against the caption/transcript or the original.
 5. **Top N comments (by likes)**: the most "validated" comments by the
    community. Each comment has likes and replies.
 6. **Comment consensus (heuristic)**: counts agree/disagree/neutral and
@@ -129,8 +135,8 @@ The markdown has stable sections:
 
 When the user asks "is it true?" / "is it reliable?":
 1. **The claim**: extract the central claim from caption + transcript +
-   OCR. If the claim is in the comments (e.g. "people say X"), note that
-   the source is the community, not the author.
+   visual text. If the claim is in the comments (e.g. "people say X"),
+   note that the source is the community, not the author.
 2. **Who says it**: check the author (verified? followers? does the video
    cite sources?). Engagement stats (views/likes ratio) give a hint of
    reach but NOT of truth.
@@ -182,7 +188,7 @@ Typical structure (adapt as needed):
 │   ├── cli.py              CLI (tiktok|instagram|auto <url> [options], setup)
 │   ├── common.py           curl_cffi sessions, URL parsing, ffmpeg, output
 │   ├── stt.py              faster-whisper wrapper
-│   ├── ocr.py              RapidOCR wrapper (PP-OCRv6, onnxruntime)
+│   ├── vision.py           LFM2.5-VL-1.6B wrapper (GGUF via llama-cpp-python)
 │   ├── browser.py          Camoufox wrapper (Session: open/popup/extract/download)
 │   ├── tiktok.py           TikTok pipeline (page → comments API → oEmbed)
 │   ├── instagram.py        Instagram pipeline (curl → browser XDT → comments popup)
@@ -190,7 +196,7 @@ Typical structure (adapt as needed):
 ├── pyproject.toml          packaging (pip install scry-social)
 ├── notes/                  RESEARCH.md (source of decisions), DECISIONS.md
 ├── README.md / LICENSE     docs + MIT license
-└── ~/.cache/scry/models/   model cache (whisper, rapidocr) — persistent
+└── ~/.cache/scry/models/   model cache (whisper, lfm2.5-vl) — persistent
 
 # Per-run data (ephemeral, by default):
 /tmp/scry/downloads/<platform>-<id>/   media, audio, frames

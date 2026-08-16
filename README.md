@@ -1,10 +1,11 @@
 # scry
 
 Turn TikTok videos and Instagram posts (reels, photos, carousels) into
-**LLM-readable intel**: audio transcripts (STT), text from images (OCR),
-post metadata, and top comments with a transparent community-consensus
-score — so an AI agent can understand what a post is, what it claims,
-and how the community reacts to it.
+**LLM-readable intel**: audio transcripts (STT), visual understanding
+(VLM: image description + on-screen text), post metadata, and top
+comments with a transparent community-consensus score — so an AI agent
+ can understand what a post is, what it claims, and how the community
+reacts to it.
 
 Everything runs **CPU-only** (no GPU). A lightweight anti-detect browser
 (Camoufox) is launched *only* for Instagram when the fast HTTP path is
@@ -21,22 +22,26 @@ Requirements: Linux with `ffmpeg`/`ffprobe` (e.g. `apt install ffmpeg`),
 Python ≥ 3.10.
 
 ```bash
-pip install scry-social        # or: uv tool install scry-social
-scry setup                     # one-time: downloads the Camoufox browser (~200MB)
+pip install "scry-social[vision]"   # or: uv tool install scry-social
+scry setup --all                 # one-time: Camoufox browser (~200MB)
+                                 #          + vision model (~2.1GB)
 ```
 
-That's it. `scry` is now on your PATH.
+That's it. `scry` is now on your PATH. The `[vision]` extra (LFM2.5-VL
+via llama.cpp, no torch) is optional but recommended: without it, photos
+and video frames are not described. llama-cpp-python compiles ggml from
+source at install time, so a C compiler (`build-essential`) is needed.
 
 From source:
 
 ```bash
 git clone <this-repo> && cd scry
-pip install -e .
-scry setup
+pip install -e ".[vision]"
+scry setup --all
 ```
 
-Models (Whisper ~600MB, RapidOCR ~15MB) download automatically on first
-use and are cached persistently in `~/.cache/scry/models/`.
+Models (Whisper ~600MB, LFM2.5-VL-1.6B Q8_0 ~2.1GB) download
+automatically and are cached persistently in `~/.cache/scry/models/`.
 
 ## Usage
 
@@ -44,7 +49,7 @@ use and are cached persistently in `~/.cache/scry/models/`.
 # TikTok
 scry tiktok "https://www.tiktok.com/@user/video/1234567890"
 
-# Instagram (reel/video -> STT + OCR; photo/carousel -> OCR)
+# Instagram (reel/video -> STT + VLM; photo/carousel -> VLM)
 scry instagram "https://www.instagram.com/reel/XXXX/"
 
 # Auto-detect platform
@@ -54,7 +59,7 @@ scry auto "https://www.instagram.com/reel/XXXX/"
 #   --max-comments N    comments to analyze (default 30)
 #   --no-comments       skip comments + consensus
 #   --no-download       skip media download + STT (metadata + comments only)
-#   --no-ocr            skip OCR (Instagram)
+#   --no-vision         skip VLM visual analysis (Instagram)
 #   --stt-model NAME    tiny|base|small|medium|large-v3 (default small)
 #   --language it       force STT language (default auto-detect)
 #   --cookies FILE      Netscape cookies file for login-walled content
@@ -75,7 +80,8 @@ For one URL you get a Markdown report (plus raw JSON) with:
 1. **Header** — URL, ID, date, stats (plays/likes/comments/shares)
 2. **Caption** — the author's original text
 3. **Transcript (STT)** — what is said in the video, with timestamps
-4. **Text in images (OCR)** — on-screen text (hooks, claims, CTAs)
+4. **Visual (VLM)** — concise description of each image/frame +
+   verbatim transcription of any on-screen text (hooks, claims, CTAs)
 5. **Top comments** — most-liked comments with like/reply counts
    (Instagram: including images/stickers attached to comments)
 6. **Consensus (heuristic)** — agree/disagree/neutral counts and an
@@ -154,6 +160,9 @@ screenshot/OCR.
 
 - STT can miss proper nouns/slang; ambiguous transcripts are flagged in
   the report.
+- The VLM (1.6B) is small: descriptions are short and occasionally
+  imperfect, and on-screen text transcription can drop or alter words.
+  It is a signal for the agent, not a certified transcript.
 - Comments are the **top-N by likes**, not the full corpus — a bias toward
   mainstream opinions (declared in every report).
 - Instagram: top-level comments in the popup (~15–30 with one scroll);
@@ -172,7 +181,7 @@ scry/
   cli.py                CLI (tiktok|instagram|auto <url> [options], setup)
   common.py             sessions, URL parsing, paths, ffmpeg helpers, output
   stt.py                faster-whisper wrapper
-  ocr.py                RapidOCR wrapper (PP-OCRv6, onnxruntime)
+  vision.py             LFM2.5-VL-1.6B wrapper (GGUF via llama-cpp-python)
   browser.py            Camoufox wrapper (page open, comments popup, download)
   tiktok.py             TikTok pipeline
   instagram.py          Instagram pipeline
