@@ -16,7 +16,6 @@
 | curl_cffi impersonate="chrome" (alias vecchio) | ❌ bloccato (fingerprint vecchio) | n/t |
 | Download diretto media (CDN) | ✅ con Referer www.tiktok.com | ✅ video_versions (URL firmati) |
 | API commenti /api/comment/list/ | ✅ 100% (msToken da pagina) | n/d (popup client-side) |
-| oEmbed | ✅ fallback metadata | ✅ og: meta |
 | **Camoufox headful + cookies** | (non usato) | ✅ XDT completo + popup commenti DOM |
 | Camoufox headless | n/t | ❌ challenge wall, nessun XDT |
 
@@ -28,8 +27,7 @@ safari/firefox/edge/chrome131, tutti verificati OK).
 ### Nota URL TikTok
 `https://www.tiktok.com/video/<id>` **senza @username → 404** (pagina
 /404?fromUrl=...). Gli URL di share reali sono
-`/​@user/video/<id>?is_from_webapp=1` — usare sempre quelli; il tool ritenta
-automaticamente con l'autore da oEmbed se l'URL nudo fallisce.
+`/​@user/video/<id>?is_from_webapp=1` — usare sempre quelli.
 
 ## Cosa sbloccano i cookies (validato 2026-08-15 da IP residenziale)
 - TikTok: pagina completa → JSON embedded con tutto (stats, author, music,
@@ -57,8 +55,6 @@ automaticamente con l'autore da oEmbed se l'URL nudo fallisce.
 - **Item detail API**: `GET /api/post/item/detail/?aweme_id=...&aid=1988&...`
   con msToken → `item_list[0]` con `video.play_addr.uri` (URL playback diretto
   su CDN akamai) → download senza yt-dlp. Da validare con cookies.
-- **oEmbed**: `GET https://www.tiktok.com/oembed?url=...` — sempre attivo,
-  dati minimi (title, author_name, author_url). Ottimo fallback.
 - **short-link** (vm.tiktok.com/xxx): redirect 302 verso /video/ID — risolvibile
   anche senza login (da datacenter a volte serve retry).
 
@@ -183,8 +179,7 @@ per IP, non i cookies.
   → risposta di **risk-control** per richieste senza firma anti-bot (X-Bogus/
   _signature) o fingerprint device. Non è un problema di parametri: serve la
   firma (maintenance treadmill) o un proxy residenziale.
-- **TikTok comment API + oEmbed**: funzionano da datacenter (endpoint meno
-  protetti).
+- **TikTok comment API**: funziona da datacenter (endpoint meno protetti).
 - **yt-dlp TikTok**: 404 redirect (l'estattore ha bisogno della pagina, che è
   bloccata).
 - **Instagram HTML**: 620KB ma è una **checkpoint/challenge wall**

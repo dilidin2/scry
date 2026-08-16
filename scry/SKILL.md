@@ -70,9 +70,7 @@ Outputs are saved in `/tmp/scry/output/<timestamp>-<platform>-<id>.{md,json}`
 prefix; the final markdown goes to stdout.
 
 **TikTok URL note**: prefer the full `@user/video/<id>` URL (as copied from
-the share button). The bare `tiktok.com/video/<id>` URL may return 404; when
-that happens the tool automatically retries with the author recovered from
-oEmbed.
+the share button). The bare `tiktok.com/video/<id>` URL may return 404.
 
 **Instagram comments note**: comments open in a popup (no dedicated URL).
 The browser clicks the comments icon, waits for the popup, and extracts from

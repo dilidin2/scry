@@ -101,8 +101,7 @@ scry auto "https://www.instagram.com/reel/XXXX/"
 ```
 
 Use the **full share URL** for TikTok (`@user/video/<id>`), as copied
-from TikTok's share button — the bare `/video/<id>` URL may 404 (the tool
-retries automatically with the author name from oEmbed).
+from TikTok's share button — the bare `/video/<id>` URL may 404.
 
 ### What you get
 
@@ -135,7 +134,7 @@ works much better than a datacenter one.
 
 | Platform | Tier 1 (fast) | Tier 2 (fallback) |
 |---|---|---|
-| TikTok | `curl_cffi` with Chrome 136 TLS impersonation → page JSON → direct CDN download → comments API | oEmbed (minimal metadata) |
+| TikTok | `curl_cffi` with Chrome 136 TLS impersonation → page JSON → direct CDN download → comments API | — (no fallback; metadata needs a logged-in session, see [Cookies](#cookies-optional)) |
 | Instagram | `curl_cffi` → embedded page data (XDT/`__additionalData`) + og meta | **Camoufox** (headed anti-detect Firefox): opens the post, reads page data, opens the comments popup, extracts comments from the DOM |
 
 Media download: direct CDN URLs first, then the browser's request

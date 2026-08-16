@@ -31,10 +31,13 @@ Parakeet (EN-only), Moonshine (qualità inferiore), PaddleSpeech (pesante).
 **Alternative scartate**: Tesseract (IT mediocre), PaddleOCR nativo (deps),
 EasyOCR/Surya (torch da 2GB).
 
-## 4. Pipeline TikTok: pagina → API commenti → oEmbed
-**Decisione**: tiering con fallback espliciti, sempre metadata minimi.
-**Ragione**: nessun singolo endpoint è affidabile da ogni IP; la combinazione
-dà robustezza. oEmbed è il floor garantito (title+author).
+## 4. Pipeline TikTok: pagina → API commenti (metadata solo via cookie)
+**Decisione**: un solo modo per le metadata — la pagina con sessione loggata
+(cookie.txt). Niente fallback oEmbed: se la pagina non dà dati (anti-bot wall
+/ IP bloccato), il run fallisce chiedendo i cookies.
+**Ragione**: percorso unico e prevedibile; il floor oEmbed (metadata minime)
+era stato rimosso perché copriva il fallimento invece di segnalarlo. I cookies
+sono la leva principale e l'unica via per le metadata TikTok.
 **Commenti**: API `/api/comment/list/` con msToken estratto dalla pagina
 (funziona con impersonation, senza X-Bogus). Ordinati per like.
 
