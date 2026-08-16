@@ -1,12 +1,14 @@
 """TikTok pipeline: link -> metadata + download -> STT -> (+ comments + consensus).
 
-Tiered strategy (no browser):
-  Tier 1: GET the video page with curl_cffi (chrome impersonation) + ttwid
-          session -> embedded JSON __UNIVERSAL_DATA_FOR_REHYDRATION__
-          (itemInfo.itemStruct: desc, stats, author, music) + token for the API
-  Tier 2: internal comments API /api/comment/list/ with msToken+aid+region
+Strategy (no browser):
+  Metadata: GET the video page with curl_cffi (chrome impersonation) + a
+          logged-in session (cookie.txt) -> embedded JSON
+          __UNIVERSAL_DATA_FOR_REHYDRATION__
+          (itemInfo.itemStruct: desc, stats, author, music) + token for the API.
+          This is the only metadata path: without valid cookies TikTok serves
+          an anti-bot shell page and no data is available.
+  Comments: internal comments API /api/comment/list/ with msToken+aid+region
           (extractable from the page; works from residential IPs)
-  Tier 3: official oEmbed (always available) -> minimal title/author
   Download: direct from the CDN (playAddr/bitrateInfo from the page JSON,
           needs header Referer: https://www.tiktok.com/) -> yt-dlp fallback
 """
@@ -217,21 +219,6 @@ def fetch_comments_api(session, video_id: str, page_html: str,
     return all_comments[:max_comments], "ok"
 
 
-def oembed_metadata(url: str) -> dict | None:
-    """Official oEmbed: works everywhere, minimal data (title/author)."""
-    try:
-        import httpx
-        r = httpx.get("https://www.tiktok.com/oembed",
-                      params={"url": url}, timeout=20,
-                      headers={"User-Agent": "scry/0.1"})
-        d = r.json()
-        return {"title": d.get("title"), "author_name": d.get("author_name"),
-                "author_url": d.get("author_url"),
-                "url": d.get("url")}
-    except Exception:
-        return None
-
-
 # ---------------------------------------------------------------------------
 # Download
 # ---------------------------------------------------------------------------
@@ -355,46 +342,14 @@ def process(url: str, *, do_stt: bool = True, do_comments: bool = True,
     else:
         result["tiers"]["page"] = "fetch failed"
 
-    # ---- Tier 3 (fallback): oEmbed ---------------------------------------
+    # Metadata comes only from the page; without a logged-in session there is
+    # no fallback, so stop here and point at cookies.
     if not detail:
-        log("TikTok: oEmbed fallback...")
-        oe = oembed_metadata(info["canonical"])
-        if oe:
-            result["tiers"]["oembed"] = "ok"
-            result["metadata"] = {
-                "id": video_id,
-                "desc": oe.get("title"),
-                "author": {"username": ((oe.get("author_url") or "").rsplit("/", 1)[-1]
-                             or oe.get("author_name") or "").lstrip("@")},
-                "stats": {}, "hashtags": [], "music": None,
-                "source": "oembed (minimal: title+author)",
-            }
-        else:
-            result["error"] = ("No method produced metadata "
-                               "(blocked IP? try --cookies cookies.txt)")
-            return result, render(result)
+        result["error"] = ("No method produced metadata "
+                           "(blocked IP? try --cookies cookies.txt)")
+        return result, render(result)
 
-    # Retry with @username if the bare /video/<id> URL produced no data
-    # (TikTok 404s without the username; oEmbed gives us the author).
-    if (not detail and "/@" not in info["canonical"]
-            and not info.get("has_user")):
-        author = ((result.get("metadata") or {}).get("author") or {}).get("username")
-        if author:
-            retry_url = f"https://www.tiktok.com/@{author}/video/{video_id}"
-            log(f"TikTok: page retry with @user ({retry_url})")
-            page2 = fetch_page(session, retry_url)
-            if page2:
-                scope2 = parse_rehydration(page2[0])
-                if scope2:
-                    detail = extract_video_detail(scope2)
-                    comments_page = extract_page_comments(scope2)
-                    gears = extract_video_urls(scope2)
-                    result["tiers"]["page"] = "ok (retry with @user)"
-                    info["canonical"] = retry_url
-                    result["url"] = retry_url
-
-    if detail:
-        result["metadata"] = detail
+    result["metadata"] = detail
 
     # ---- Download + STT ---------------------------------------------------
     if do_download:
