@@ -1,16 +1,17 @@
-"""Visual understanding with LFM2.5-VL-1.6B (Liquid AI) via llama-cpp-python.
+"""Visual understanding with Qwen3.5-0.8B (unsloth GGUF) via llama-cpp-python.
 
-Replaces classical OCR: the model describes the image AND transcribes any
-on-screen text (multilingual) in one CPU-only pass. No torch: inference goes
-through GGUF weights (Q8_0, near-lossless for a 1.6B model) built into the
-llama-cpp-python package (mtmd / libmtmd backend).
+Qwen3.5-0.8B is a small VLM (Gated DeltaNet + Gated Attention hybrid, vision
+encoder included). It describes the image AND transcribes any on-screen text
+(multilingual) in one CPU-only pass. No torch: inference goes through GGUF
+weights (Q8_0) via the llama-cpp-python mtmd / libmtmd backend. Thinking is
+OFF by default for this 0.8B model, so no extra toggle is needed.
 
 Optional extra:
     pip install "scry-social[vision]"
 One-time setup:
-    scry setup --vision    (downloads ~2.1 GB to ~/.cache/scry/models)
+    scry setup --vision    (downloads ~1.1 GB to ~/.cache/scry/models)
 
-Model: LiquidAI/LFM2.5-VL-1.6B-GGUF (LFM Open License v1.0).
+Model: unsloth/Qwen3.5-0.8B-GGUF (Qwen3.5-0.8B-Q8_0 + mmproj-F16).
 """
 from __future__ import annotations
 
@@ -20,11 +21,17 @@ from pathlib import Path
 
 from .common import MODELS_DIR, extract_frames, log
 
-MODEL_REPO = "LiquidAI/LFM2.5-VL-1.6B-GGUF"
-MODEL_FILE = "LFM2.5-VL-1.6B-Q8_0.gguf"
-MMPROJ_FILE = "mmproj-LFM2.5-VL-1.6b-Q8_0.gguf"
-MODEL_LABEL = "LFM2.5-VL-1.6B (Q8_0)"
+MODEL_REPO = "unsloth/Qwen3.5-0.8B-GGUF"
+MODEL_FILE = "Qwen3.5-0.8B-Q8_0.gguf"
+MMPROJ_FILE = "mmproj-F16.gguf"
+MODEL_LABEL = "Qwen3.5-0.8B (Q8_0)"
 
+# Qwen3.5-0.8B ha il thinking OFF di default (a differenza dei modelli 27B+
+# usati altrove nel progetto). Nessun chat_template_kwargs necessario: il
+# default e' gia' quello che vogliamo, letto dal template Jinja embedded nel
+# GGUF via MTMDChatHandler. Se in futuro si aggiorna il GGUF e il default
+# cambiasse, il modo per forzarlo sarebbe iniettare l'istruzione nel
+# SYSTEM_PROMPT, dato che Qwen3.5 non supporta il soft-switch /no_think.
 SYSTEM_PROMPT = (
     "Describe this image, then transcribe all readable text in it verbatim. "
     "No markdown. No preamble. No translation of the text. No guesswork."
@@ -37,7 +44,7 @@ _load_error: str | None = None
 
 
 def model_dir() -> Path:
-    return MODELS_DIR / "lfm2.5-vl-1.6b"
+    return MODELS_DIR / "qwen3.5-0.8b"
 
 
 def setup_vision() -> None:
@@ -89,7 +96,7 @@ def _get_llm():
             _llm = Llama(
                 model_path=str(d / MODEL_FILE),
                 chat_handler=handler,
-                n_ctx=2048,
+                n_ctx=4096,
                 verbose=False,
             )
             log(f"Vision: {MODEL_LABEL} loaded in {time.time() - t0:.1f}s")
@@ -116,9 +123,11 @@ def describe_image(image_path: str) -> dict:
                     {"type": "text", "text": "Describe this image."},
                 ]},
             ],
-            temperature=0.1,
-            min_p=0.15,
-            repeat_penalty=1.05,
+            temperature=0.7,
+            top_p=0.80,
+            top_k=20,
+            min_p=0.0,
+            presence_penalty=1.5,
             max_tokens=MAX_TOKENS,
         )
     return {
