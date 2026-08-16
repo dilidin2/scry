@@ -1,11 +1,12 @@
 # scry
 
 Turn TikTok videos and Instagram posts (reels, photos, carousels) into
-**LLM-readable intel**: audio transcripts (STT), visual understanding
-(VLM: image description + on-screen text), post metadata, and top
-comments with a transparent community-consensus score — so an AI agent
-can understand what a post is, what it claims, and how the community
-reacts to it.
+**LLM-readable intel**: audio transcripts (STT), post metadata, top
+comments with a transparent community-consensus score, and local media
+file paths (so a vision-capable agent can look at the media directly).
+Visual understanding by a small local VLM (image description + on-screen
+text) is an **optional extra** (`[vision]`, `-v` flag) for agents and
+models without their own vision.
 
 Everything runs **CPU-only** (no GPU). A lightweight anti-detect browser
 (Camoufox) is launched *only* for Instagram when the fast HTTP path is
@@ -22,31 +23,34 @@ not enough.
 
 If you want to use `scry` as a normal CLI tool:
 
-Requirements: Linux with `ffmpeg`/`ffprobe` (e.g. `apt install ffmpeg`),
-Python ≥ 3.10, and a C compiler (`build-essential`) if you install the
-vision extra.
+Requirements: Linux with `ffmpeg`/`ffprobe` (e.g. `apt install ffmpeg`)
+and Python ≥ 3.10.
+
+```bash
+pip install scry-social          # or: uv tool install scry-social
+scry setup                       # one-time: Camoufox browser (~200MB)
+```
+
+That's it: `scry` is on your PATH and the base pipeline (download, STT,
+metadata, comments, media file paths) works.
+
+Optional local VLM — only if the model consuming the output has no vision
+of its own (if it does, pass the Media files to it instead):
 
 ```bash
 pip install "scry-social[vision]"   # or: uv tool install "scry-social[vision]"
-scry setup --all                 # one-time: Camoufox browser (~200MB)
-                                 #          + vision model (~2.1GB)
+scry setup --vision                # one-time: Qwen3.5-0.8B Q8_0 (~1.1GB)
 ```
+The `[vision]` extra (Qwen3.5-0.8B GGUF via llama.cpp, no torch) needs a C
+compiler (`build-essential`): llama-cpp-python compiles ggml from source
+at install time. In the pipeline it is opt-in too: without `-v` no VLM
+runs.
 
-That's it. `scry` is now on your PATH. The `[vision]` extra (LFM2.5-VL
-via llama.cpp, no torch) is optional but recommended: without it, photos
-and video frames are not described. llama-cpp-python compiles ggml from
-source at install time, hence the C compiler.
+From source: `git clone <this-repo> && cd scry && pip install -e .`
+(add `[vision]` if you want the VLM).
 
-From source:
-
-```bash
-git clone <this-repo> && cd scry
-pip install -e ".[vision]"
-scry setup --all
-```
-
-Models (Whisper ~600MB, LFM2.5-VL-1.6B Q8_0 ~2.1GB) download
-automatically and are cached persistently in `~/.cache/scry/models/`.
+Models (Whisper ~600MB, VLM ~1.1GB) download on demand and are cached
+persistently in `~/.cache/scry/models/`.
 
 ### For agents (you are an LLM reading this)
 
@@ -56,7 +60,8 @@ scraped this page to install it): install the CLI exactly as above, then
 how to use the tool — you don't need to remember anything else:
 
 ```bash
-scry setup --all
+scry setup                    # one-time: Camoufox browser
+scry setup --vision           # only if you installed the [vision] extra
 scry skill --path ~/.agents/skills        # cross-harness standard location
 ```
 
@@ -80,8 +85,11 @@ handling, and reliability checks.
 # TikTok
 scry tiktok "https://www.tiktok.com/@user/video/1234567890"
 
-# Instagram (reel/video -> STT + VLM; photo/carousel -> VLM)
+# Instagram (reel/video -> STT + media files; photo/carousel -> media files)
 scry instagram "https://www.instagram.com/reel/XXXX/"
+
+# Instagram with local-VLM visual analysis (needs the [vision] extra)
+scry instagram "https://www.instagram.com/reel/XXXX/" -v
 
 # Auto-detect platform
 scry auto "https://www.instagram.com/reel/XXXX/"
@@ -90,7 +98,8 @@ scry auto "https://www.instagram.com/reel/XXXX/"
 #   --max-comments N    comments to analyze (default 30)
 #   --no-comments       skip comments + consensus
 #   --no-download       skip media download + STT (metadata + comments only)
-#   --no-vision         skip VLM visual analysis (Instagram)
+#   -v, --vision        local VLM visual analysis (Instagram; needs the
+#                       [vision] extra; default: off)
 #   --stt-model NAME    tiny|base|small|medium|large-v3 (default small)
 #   --language it       force STT language (default auto-detect)
 #   --cookies FILE      Netscape cookies file for login-walled content
@@ -110,11 +119,15 @@ For one URL you get a Markdown report (plus raw JSON) with:
 1. **Header** — URL, ID, date, stats (plays/likes/comments/shares)
 2. **Caption** — the author's original text
 3. **Transcript (STT)** — what is said in the video, with timestamps
-4. **Visual (VLM)** — concise description of each image/frame +
-   verbatim transcription of any on-screen text (hooks, claims, CTAs)
-5. **Top comments** — most-liked comments with like/reply counts
+4. **Visual (VLM)** *(only with `-v`)* — concise description of each
+   image/frame + verbatim transcription of any on-screen text (hooks,
+   claims, CTAs)
+5. **Media files** — local absolute paths of the downloaded media (video,
+   extracted frames, carousel images): a vision-capable agent reads these
+   directly with its own model
+6. **Top comments** — most-liked comments with like/reply counts
    (Instagram: including images/stickers attached to comments)
-6. **Consensus (heuristic)** — agree/disagree/neutral counts and an
+7. **Consensus (heuristic)** — agree/disagree/neutral counts and an
    agreement ratio, as a *pre-LLM* signal of community alignment
 
 The consensus score is a deliberately simple, transparent lexical
@@ -194,9 +207,11 @@ screenshot/OCR.
 
 - STT can miss proper nouns/slang; ambiguous transcripts are flagged in
   the report.
-- The VLM (1.6B) is small: descriptions are short and occasionally
-  imperfect, and on-screen text transcription can drop or alter words.
-  It is a signal for the agent, not a certified transcript.
+- Vision is opt-in (`[vision]` extra + `-v`) and the VLM (0.8B) is small:
+  descriptions are short and occasionally imperfect, and on-screen text
+  transcription can drop or alter words. It is a signal for the agent, not
+  a certified transcript — and if your model has vision, prefer reading
+  the Media files with it.
 - Comments are the **top-N by likes**, not the full corpus — a bias toward
   mainstream opinions (declared in every report).
 - Instagram: top-level comments in the popup (~15–30 with one scroll);
@@ -215,7 +230,7 @@ scry/
   cli.py                CLI (tiktok|instagram|auto <url> [options], setup)
   common.py             sessions, URL parsing, paths, ffmpeg helpers, output
   stt.py                faster-whisper wrapper
-  vision.py             LFM2.5-VL-1.6B wrapper (GGUF via llama-cpp-python)
+  vision.py             Qwen3.5-0.8B VLM wrapper (GGUF via llama-cpp-python, optional)
   browser.py            Camoufox wrapper (page open, comments popup, download)
   tiktok.py             TikTok pipeline
   instagram.py          Instagram pipeline

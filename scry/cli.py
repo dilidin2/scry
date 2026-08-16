@@ -5,7 +5,7 @@ Usage:
   scry instagram <url> [options]
   scry auto <url> [options]       (detects the platform automatically)
   scry setup                      (one-time: downloads the Camoufox browser)
-  scry setup -v                   (one-time: downloads the vision model, ~2.1GB)
+  scry setup -v                   (one-time: downloads the vision model, ~1.1GB)
   scry setup --all                (both)
   scry skill                      (show the bundled agent skill)
   scry skill --path DIR           (install it into an agent skills directory)
@@ -16,7 +16,8 @@ Common options:
   --stt-model NAME     whisper: base|small|medium|large-v3 (default small)
   --language CODE      force STT language (default: auto-detect)
   --no-stt             skip transcription
-  --no-vision          skip VLM visual analysis (instagram)
+  -v, --vision         run the local VLM visual analysis (instagram; needs
+                       the [vision] extra; default: off)
   --no-download        skip media download (metadata+comments only)
   --cookies FILE       Netscape cookies file (for content that requires login)
   --json               print only the JSON to stdout
@@ -47,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("setup",
                         help="one-time setup: download the Camoufox browser")
     sp.add_argument("-v", "--vision", action="store_true",
-                    help="download the vision model (LFM2.5-VL-1.6B Q8_0)")
+                    help="download the vision model (Qwen3.5-0.8B Q8_0, ~1.1GB)")
     sp.add_argument("--all", action="store_true",
                     help="download both browser and vision model")
     sp = sub.add_parser("skill",
@@ -64,7 +65,9 @@ def _add_opts(sp: argparse.ArgumentParser) -> None:
                     choices=["tiny", "base", "small", "medium", "large-v3"])
     sp.add_argument("--language", default=None, help="e.g. it, en (default: auto)")
     sp.add_argument("--no-stt", action="store_true")
-    sp.add_argument("--no-vision", action="store_true")
+    sp.add_argument("-v", "--vision", action="store_true",
+                    help="local VLM visual analysis (needs the [vision] extra; "
+                         "default: off)")
     sp.add_argument("--no-download", action="store_true")
     sp.add_argument("--cookies", default=None, help="Netscape cookies file")
     sp.add_argument("--json", action="store_true", help="JSON only on stdout")
@@ -147,12 +150,17 @@ def main() -> int:
     )
 
     if platform == "tiktok":
+        if args.vision:
+            from .common import log
+            log("TikTok: vision is planned but not implemented yet - "
+                "running without the VLM (media files are still listed "
+                "for your own vision)")
         from .tiktok import process
         kwargs["do_download"] = not args.no_download
         result, md = process(args.url, **kwargs)
     else:
         from .instagram import process
-        kwargs["do_vision"] = not args.no_vision
+        kwargs["do_vision"] = args.vision
         kwargs["use_browser"] = not getattr(args, "no_browser", False)
         kwargs["headless"] = getattr(args, "headless", False)
         result, md = process(args.url, **kwargs)

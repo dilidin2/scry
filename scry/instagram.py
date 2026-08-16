@@ -23,8 +23,8 @@ from pathlib import Path
 
 from .common import (
     DOWNLOADS_DIR, IMPERSONATE, add_netscape_cookies, classify_url,
-    default_cookies, extract_audio, fmt, fmt_ts, log, make_session, run_cmd,
-    video_duration,
+    default_cookies, extract_audio, extract_frames, fmt, fmt_ts, log,
+    make_session, run_cmd, video_duration,
 )
 from .consensus import analyze_comments
 
@@ -319,7 +319,7 @@ def download_media(media: dict, code: str, session, cookies: str | None,
 # ---------------------------------------------------------------------------
 # Full pipeline
 # ---------------------------------------------------------------------------
-def process(url: str, *, do_stt: bool = True, do_vision: bool = True,
+def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
             do_comments: bool = True, max_comments: int = 30,
             stt_model: str = "small", language: str | None = None,
             cookies: str | None = None, use_browser: bool = True,
@@ -421,6 +421,16 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = True,
     video_path = dl.get("video_path")
     images = [f["path"] for f in dl["files"] if f["kind"] == "image"]
 
+    # ---- Media files (local paths, for agents that have their own vision) --
+    media_files: list[str] = []
+    if video_path:
+        media_files.append(video_path)
+        media_files.extend(
+            extract_frames(video_path, str(outdir / "frames"), n=3))
+    media_files.extend(images)
+    if media_files:
+        result["media_files"] = media_files
+
     # ---- STT (video) --------------------------------------------------------
     if video_path and do_stt:
         wav = str(outdir / f"{code}.wav")
@@ -433,7 +443,7 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = True,
         else:
             result["transcript"] = {"error": "audio extraction failed"}
 
-    # ---- Visual understanding (VLM: description + on-screen text) ------------
+    # ---- Visual understanding (opt-in via -v: local VLM) --------------------
     if do_vision:
         from . import vision
         if vision.vision_available():
@@ -451,10 +461,14 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = True,
                     vis_out["video_frames"] = vr["text"]
             if vis_out:
                 result["vision"] = vis_out
+            else:
+                result["vision_note"] = "vision ran but produced no text"
         else:
-            result["vision_note"] = (
-                "vision not active: pip install 'scry-social[vision]' "
-                "and then run 'scry setup --vision'")
+            result["vision_error"] = (
+                "vision requested (-v) but not available: "
+                "pip install 'scry-social[vision]' then run 'scry setup --vision'")
+    else:
+        result["vision_note"] = "vision skipped (opt-in: run with -v)"
 
     # ---- Comments -------------------------------------------------------------
     if do_comments:
@@ -512,8 +526,16 @@ def render(r: dict) -> str:
         L.append(f"\n## Visual ({MODEL_LABEL})")
         for k, v in o.items():
             L.append(f"\n**{k}:**\n\n{v}")
+    if r.get("vision_error"):
+        L.append(f"\n> ⚠️ {r['vision_error']}")
     elif r.get("vision_note"):
         L.append(f"\n> ℹ️ {r['vision_note']}")
+
+    mf = r.get("media_files") or []
+    if mf:
+        L.append("\n## Media files")
+        for p in mf:
+            L.append(f"- {p}")
 
     c = r.get("comments") or []
     if c:

@@ -1,15 +1,17 @@
 ---
 name: scry
-description: Scrape TikTok videos and Instagram posts (videos, reels, photos, carousels) and turn them into LLM-readable intel (STT transcripts, visual understanding via a small VLM, image description plus on-screen text, captions, stats) plus top comments with a community consensus/reliability score. Use this skill whenever the user shares a TikTok or Instagram link and wants to know what is in it, what it says, or what people think about it, or asks to watch a TikTok or IG post, transcribe a reel, read the comments, or check if a claim is supported by the community. Everything runs CPU-only (no GPU; a lightweight browser is only launched for Instagram when the fast path fails).
+description: Scrape TikTok videos and Instagram posts (videos, reels, photos, carousels) and turn them into LLM-readable intel (STT transcripts, captions, stats) plus top comments with a community consensus/reliability score. The output lists local media file paths, so a vision-capable model can inspect the media directly with its own vision; an optional local VLM analysis (the -v flag, needs the [vision] extra) describes images and transcribes on-screen text for models without vision. Use this skill whenever the user shares a TikTok or Instagram link and wants to know what is in it, what it says, or what people think about it, or asks to watch a TikTok or IG post, transcribe a reel, read the comments, or check if a claim is supported by the community. Everything runs CPU-only (no GPU; a lightweight browser is only launched for Instagram when the fast path fails).
 license: MIT
 ---
 
 # scry
 
 Let an LLM "see" TikTok and Instagram: download the content, transcribe the
-audio (STT), describe the images and read the on-screen text (small VLM),
-collect metadata and top comments with a consensus/reliability score.
-Everything CPU-only (no GPU).
+audio (STT), collect metadata and top comments with a consensus/reliability
+score, and save the media locally (file paths are listed in the output).
+Optionally (`-v` flag + `[vision]` extra) a small local VLM describes the
+images and reads the on-screen text — for models that have no vision of
+their own. Everything CPU-only (no GPU).
 
 **Scraping tiers** (lightest to heaviest):
 - **TikTok**: curl_cffi (TLS impersonation) → page with embedded JSON →
@@ -26,14 +28,21 @@ fragile).
 ## Setup (one-time)
 
 ```bash
-uv tool install "scry-social[vision]"    # or: pip install "scry-social[vision]"
-scry setup --all                          # Camoufox browser + vision model
+uv tool install scry-social       # base: download + STT + metadata + comments
+scry setup                        # Camoufox browser (~200MB)
 ```
 
-External dependencies: system `ffmpeg`/`ffprobe`; a C compiler is needed at
-install time (llama-cpp-python compiles ggml from source).
-Models (whisper ~600MB, LFM2.5-VL-1.6B Q8_0 ~2.1GB) are cached in
-`~/.cache/scry/models/`.
+Optional local VLM — only if the model consuming the output has **no
+vision of its own** (if it does, prefer passing the Media files to it):
+
+```bash
+uv tool install "scry-social[vision]"    # or: pip install "scry-social[vision]"
+scry setup --vision                       # Qwen3.5-0.8B Q8_0 (~1.1GB)
+```
+
+External dependencies: system `ffmpeg`/`ffprobe`; a C compiler is needed
+only for the `[vision]` extra (llama-cpp-python compiles ggml from source).
+Models (whisper ~600MB, VLM ~1.1GB) are cached in `~/.cache/scry/models/`.
 
 ## Commands
 
@@ -41,8 +50,11 @@ Models (whisper ~600MB, LFM2.5-VL-1.6B Q8_0 ~2.1GB) are cached in
 # TikTok: download + transcription + comments + consensus
 scry tiktok "https://www.tiktok.com/@user/video/1234567890"
 
-# Instagram (reel/video -> STT + VLM frames; photo/carousel -> VLM)
+# Instagram (reel/video -> STT + media files; photo/carousel -> media files)
 scry instagram "https://www.instagram.com/reel/XXXX/"
+
+# Instagram with local-VLM visual analysis (only with the [vision] extra)
+scry instagram "https://www.instagram.com/reel/XXXX/" -v
 
 # Platform autodetect (also handles short links)
 scry auto "https://vm.tiktok.com/XXXXX/"
@@ -55,7 +67,8 @@ scry tiktok "<url>" --no-download --no-stt
 #   --no-comments       skip comments+consensus
 #   --stt-model NAME    tiny|base|small|medium|large-v3 (default small)
 #   --language it       force the STT language (default auto-detect)
-#   --no-vision         skip VLM visual analysis (instagram)
+#   -v, --vision        local-VLM visual analysis (instagram; needs the
+#                       [vision] extra; default: off)
 #   --no-download       skip download+STT
 #   --cookies FILE      Netscape cookies for content that requires login
 #   --json              stdout only JSON (for further processing)
@@ -64,10 +77,23 @@ scry tiktok "<url>" --no-download --no-stt
 #   --headless          browser without a window (more detectable)
 ```
 
+**Vision: how to decide.** The report always lists the local media file
+paths (video, 3 extracted frames, carousel images) in the `## Media files`
+section.
+- If you (the agent) have **your own vision**: read those files directly
+  with your model. Do not use `-v` — your VLM is almost certainly better
+  than the local 0.8B one.
+- Use `-v` when the model handling the output has **no vision** and the
+  post is visually driven (text over video, on-screen claims/numbers,
+  photo carousels). Cost: slow CPU inference (~1 min per 3 frames).
+- Note: TikTok vision is planned but not implemented yet — `-v` on TikTok
+  is ignored (with a note in the log).
+
 Outputs are saved in `/tmp/scry/output/<timestamp>-<platform>-<id>.{md,json}`
 (per-run data is **ephemeral** by default: lost on reboot; set
-`SCRY_DATA_DIR=/elsewhere` to keep it). Progress logs use an `[HH:MM:SS]`
-prefix; the final markdown goes to stdout.
+`SCRY_DATA_DIR=/elsewhere` to keep it — the Media files paths in the report
+always reflect the actual directory in use). Progress logs use an
+`[HH:MM:SS]` prefix; the final markdown goes to stdout.
 
 **TikTok URL note**: prefer the full `@user/video/<id>` URL (as copied from
 the share button). The bare `tiktok.com/video/<id>` URL may return 404.
@@ -108,14 +134,17 @@ The markdown has stable sections:
 3. **Transcript (STT)**: what is said in the video. Includes model,
    detected language, realtime factor. If empty: the video has no speech
    (or only music).
-4. **Visual (VLM)** [Instagram]: concise description of each image/frame
-   plus verbatim on-screen text (hooks, claims, CTAs). This is often the
-   reel's real "message". The 1.6B model is small: treat descriptions and
-   transcribed text as a signal, and double-check important numbers/words
-   against the caption/transcript or the original.
-5. **Top N comments (by likes)**: the most "validated" comments by the
+4. **Visual (VLM)** *(only when `-v` was passed)*: concise description of
+   each image/frame plus verbatim on-screen text (hooks, claims, CTAs).
+   This is often the reel's real "message". The 0.8B model is small: treat
+   descriptions and transcribed text as a signal, and double-check
+   important numbers/words against the caption/transcript or the original.
+5. **Media files**: local absolute paths of the downloaded media (video,
+   extracted frames, carousel images). If you have vision, this is what
+   you read. The paths are ephemeral by default (see above).
+6. **Top N comments (by likes)**: the most "validated" comments by the
    community. Each comment has likes and replies.
-6. **Comment consensus (heuristic)**: counts agree/disagree/neutral and
+7. **Comment consensus (heuristic)**: counts agree/disagree/neutral and
    gives an `agreement_ratio` among those with a clear opinion. Lists the
    most "validated" comments (many likes = the community agrees with that
    opinion).
@@ -124,8 +153,9 @@ The markdown has stable sections:
 
 When the user asks "is it true?" / "is it reliable?":
 1. **The claim**: extract the central claim from caption + transcript +
-   visual text. If the claim is in the comments (e.g. "people say X"),
-   note that the source is the community, not the author.
+   visual text (own vision or the Visual section). If the claim is in the
+   comments (e.g. "people say X"), note that the source is the community,
+   not the author.
 2. **Who says it**: check the author (verified? followers? does the video
    cite sources?). Engagement stats (views/likes ratio) give a hint of
    reach but NOT of truth.
@@ -153,9 +183,12 @@ Typical structure (adapt as needed):
 
 ## Known limits (declare them when relevant)
 
+- Vision is opt-in (`-v` + `[vision]` extra): without it the report has no
+  visual description — if the post looks visually driven (text on screen,
+  carousel), use your own vision on the Media files, or re-run with `-v`.
 - STT can get proper nouns/slang wrong: if the transcript is ambiguous and
   it matters, say so.
-- The VLM (1.6B) is small: short descriptions, occasional imperfections,
+- The VLM (0.8B) is small: short descriptions, occasional imperfections,
   on-screen text can drop or alter words.
 - Comments are top-N by likes, not the full corpus: bias toward
   "mainstream" comments (radical minorities don't surface).

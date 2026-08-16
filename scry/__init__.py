@@ -1,7 +1,9 @@
 """scry: let an LLM "see" TikTok and Instagram.
 
 CPU-only pipeline: metadata + media download + STT (faster-whisper) +
-VLM visual understanding (LFM2.5-VL, optional) + top comments with a
-transparent consensus heuristic.
+top comments with a transparent consensus heuristic. Media files are
+saved locally and listed in the output. An optional local VLM
+(Qwen3.5-0.8B, [vision] extra, -v flag) adds visual descriptions for
+models without their own vision.
 """
 __version__ = "0.1.0"

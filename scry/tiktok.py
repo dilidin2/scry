@@ -22,8 +22,9 @@ from pathlib import Path
 
 from .common import (
     DOWNLOADS_DIR, IMPERSONATE, add_netscape_cookies, classify_url,
-    default_cookies, extract_audio, fmt, fmt_ts, log, make_session,
-    resolve_share_url, run_cmd, save_outputs, slug, video_duration,
+    default_cookies, extract_audio, extract_frames, fmt, fmt_ts, log,
+    make_session, resolve_share_url, run_cmd, save_outputs, slug,
+    video_duration,
 )
 from .consensus import analyze_comments
 
@@ -368,6 +369,9 @@ def process(url: str, *, do_stt: bool = True, do_comments: bool = True,
                     result["transcript"] = transcribe(wav, model=stt_model, language=language)
                 else:
                     result["transcript"] = {"error": "audio extraction failed"}
+            # local paths for agents that have their own vision
+            result["media_files"] = [vpath] + extract_frames(
+                vpath, str(outdir / "frames"), n=3)
     elif do_stt:
         result["stt"] = {"skipped": "download disabled"}
 
@@ -431,6 +435,12 @@ def render(r: dict) -> str:
     dl = r.get("download")
     if dl and not dl.get("path"):
         L.append(f"\n> ⚠️ Video download failed: {dl.get('note')}")
+
+    mf = r.get("media_files") or []
+    if mf:
+        L.append("\n## Media files")
+        for p in mf:
+            L.append(f"- {p}")
 
     c = r.get("comments") or []
     if c:

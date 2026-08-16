@@ -79,7 +79,7 @@ def vision_available() -> bool:
 
 
 def _get_llm():
-    """Lazy singleton: load LFM2.5-VL once per process."""
+    """Lazy singleton: load the VLM once per process."""
     global _llm, _load_error
     if _llm is None and _load_error is None:
         try:
