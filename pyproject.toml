@@ -46,3 +46,6 @@ Homepage = "https://github.com/matteo/scry"
 
 [tool.setuptools]
 packages = ["scry"]
+
+[tool.setuptools.package-data]
+scry = ["SKILL.md"]

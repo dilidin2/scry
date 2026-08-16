@@ -7,6 +7,8 @@ Usage:
   scry setup                      (one-time: downloads the Camoufox browser)
   scry setup -v                   (one-time: downloads the vision model, ~2.1GB)
   scry setup --all                (both)
+  scry skill                      (show the bundled agent skill)
+  scry skill --path DIR           (install it into an agent skills directory)
 
 Common options:
   --max-comments N     comments to analyze (default 30)
@@ -48,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="download the vision model (LFM2.5-VL-1.6B Q8_0)")
     sp.add_argument("--all", action="store_true",
                     help="download both browser and vision model")
+    sp = sub.add_parser("skill",
+                        help="show or install the agent skill (SKILL.md)")
+    sp.add_argument("--path", default=None,
+                    help="install into DIR: copies to DIR/scry/SKILL.md")
     return p
 
 
@@ -67,6 +73,30 @@ def _add_opts(sp: argparse.ArgumentParser) -> None:
 def main() -> int:
     args = build_parser().parse_args()
     cmd = args.cmd
+
+    if cmd == "skill":
+        from pathlib import Path
+        src = Path(__file__).parent / "SKILL.md"
+        if not src.exists():
+            print("scry: bundled SKILL.md not found in the package", file=sys.stderr)
+            return 1
+        if getattr(args, "path", None):
+            import shutil
+            dest = Path(args.path).expanduser() / "scry"
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest / "SKILL.md")
+            print(f"Skill installed: {dest / 'SKILL.md'}")
+            print("Make sure your agent harness scans that directory for skills")
+            print("(cross-harness standard: ~/.agents/skills).")
+        else:
+            print(f"Bundled skill file: {src}")
+            print()
+            print("Install it into your agent's skills directory, e.g.:")
+            print("  scry skill --path ~/.agents/skills     (cross-harness standard)")
+            print("  scry skill --path ~/.claude/skills     (Claude Code)")
+            print("  scry skill --path ~/.codex/skills      (OpenAI Codex)")
+            print("  scry skill --path ~/.pi/agent/skills   (pi)")
+        return 0
 
     if cmd == "setup":
         import subprocess

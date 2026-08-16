@@ -4,7 +4,7 @@ Turn TikTok videos and Instagram posts (reels, photos, carousels) into
 **LLM-readable intel**: audio transcripts (STT), visual understanding
 (VLM: image description + on-screen text), post metadata, and top
 comments with a transparent community-consensus score — so an AI agent
- can understand what a post is, what it claims, and how the community
+can understand what a post is, what it claims, and how the community
 reacts to it.
 
 Everything runs **CPU-only** (no GPU). A lightweight anti-detect browser
@@ -18,11 +18,16 @@ not enough.
 
 ## Install
 
+### For humans
+
+If you want to use `scry` as a normal CLI tool:
+
 Requirements: Linux with `ffmpeg`/`ffprobe` (e.g. `apt install ffmpeg`),
-Python ≥ 3.10.
+Python ≥ 3.10, and a C compiler (`build-essential`) if you install the
+vision extra.
 
 ```bash
-pip install "scry-social[vision]"   # or: uv tool install scry-social
+pip install "scry-social[vision]"   # or: uv tool install "scry-social[vision]"
 scry setup --all                 # one-time: Camoufox browser (~200MB)
                                  #          + vision model (~2.1GB)
 ```
@@ -30,7 +35,7 @@ scry setup --all                 # one-time: Camoufox browser (~200MB)
 That's it. `scry` is now on your PATH. The `[vision]` extra (LFM2.5-VL
 via llama.cpp, no torch) is optional but recommended: without it, photos
 and video frames are not described. llama-cpp-python compiles ggml from
-source at install time, so a C compiler (`build-essential`) is needed.
+source at install time, hence the C compiler.
 
 From source:
 
@@ -42,6 +47,32 @@ scry setup --all
 
 Models (Whisper ~600MB, LFM2.5-VL-1.6B Q8_0 ~2.1GB) download
 automatically and are cached persistently in `~/.cache/scry/models/`.
+
+### For agents (you are an LLM reading this)
+
+If you are an AI agent and the user asked you to set up `scry` (or you
+scraped this page to install it): install the CLI exactly as above, then
+**install the bundled agent skill** so future sessions automatically know
+how to use the tool — you don't need to remember anything else:
+
+```bash
+scry setup --all
+scry skill --path ~/.agents/skills        # cross-harness standard location
+```
+
+or into your harness's skills directory:
+
+```bash
+scry skill --path ~/.claude/skills        # Claude Code
+scry skill --path ~/.codex/skills         # OpenAI Codex
+scry skill --path ~/.pi/agent/skills      # pi
+```
+
+The skill is the package's `SKILL.md` ([Agent Skills standard](https://agentskills.io));
+`scry skill` (no args) prints its location and these options. Once it is
+in a scanned skills directory, your harness presents it on demand — the
+skill contains the full usage guide, output-reading procedure, cookie
+handling, and reliability checks.
 
 ## Usage
 
@@ -188,8 +219,10 @@ scry/
   consensus.py          lexical consensus/reliability heuristic
 pyproject.toml          packaging (pip install scry-social)
 notes/                  RESEARCH.md (format docs), DECISIONS.md (rationale)
-SKILL.md                agent skill description (how an LLM should use this)
 ```
+
+`scry/SKILL.md` (inside the package) is the agent skill: install it with
+`scry skill --path <skills-dir>` — see [For agents](#for-agents-you-are-an-llm-reading-this).
 
 Per-run data (default, ephemeral):
 

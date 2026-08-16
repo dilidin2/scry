@@ -4,62 +4,61 @@ description: Scrape TikTok videos and Instagram posts (videos, reels, photos,
   carousels) and turn them into LLM-readable intel: transcripts (STT), visual
   understanding (image description + on-screen text via a small VLM),
   captions, stats, and top comments with a community consensus/reliability
-  score. Use this skill whenever the user shares a
-  TikTok or Instagram link and wants to know what's in it, what it says,
-  what people think about it, or wants its content analyzed/summarized.
-  Also use when the user asks to "watch" a TikTok/IG post, transcribe a
-  reel, read the comments, or check if a claim is supported by the
-  community. Everything runs CPU-only (no GPU; a lightweight browser is
-  only launched for Instagram when the fast path fails).
+  score. Use this skill whenever the user shares a TikTok or Instagram link
+  and wants to know what's in it, what it says, what people think about it,
+  or wants its content analyzed/summarized. Also use when the user asks to
+  "watch" a TikTok/IG post, transcribe a reel, read the comments, or check
+  if a claim is supported by the community. Everything runs CPU-only (no
+  GPU; a lightweight browser is only launched for Instagram when the fast
+  path fails).
+license: MIT
 ---
 
 # scry
 
-Let an LLM "see" TikTok and Instagram: download the content, transcribe
-the audio (STT), describe the images and read the on-screen text (small
-VLM, LFM2.5-VL via llama.cpp), collect metadata and top comments with a
-consensus/reliability score. Everything CPU-only (no GPU: the GPU
-belongs to llama.cpp).
+Let an LLM "see" TikTok and Instagram: download the content, transcribe the
+audio (STT), describe the images and read the on-screen text (small VLM),
+collect metadata and top comments with a consensus/reliability score.
+Everything CPU-only (no GPU).
 
 **Scraping tiers** (lightest to heaviest):
-- **TikTok**: curl_cffi (TLS impersonation Chrome 136) → page with embedded
-  JSON → direct CDN download → comments via API.
+- **TikTok**: curl_cffi (TLS impersonation) → page with embedded JSON →
+  direct CDN download → comments via API.
 - **Instagram**: curl_cffi → if the page gives no data, **Camoufox**
   (anti-detect Firefox, ~200MB) opens the reel in a window, reads the data
   from the page (XDT format), opens the comments popup and extracts text,
   usernames, likes and attached images from the comments in the DOM.
 
 The browser opens a visible window on the user's desktop (headed is more
-reliable against detection); if the user prefers, `--headless` disables
-the window (more fragile).
+reliable against detection); `--headless` disables the window (more
+fragile).
 
 ## Setup (one-time)
 
 ```bash
-cd /home/matteo/scry
-uv venv .venv && uv pip install -e ".[vision]"   # + ffmpeg (apt install ffmpeg)
-.venv/bin/scry setup --all           # one-time: Camoufox browser + vision model
+uv tool install "scry-social[vision]"    # or: pip install "scry-social[vision]"
+scry setup --all                          # Camoufox browser + vision model
 ```
 
-External dependency: system `ffmpeg`/`ffprobe`. A C compiler is needed at
+External dependencies: system `ffmpeg`/`ffprobe`; a C compiler is needed at
 install time (llama-cpp-python compiles ggml from source).
-Models (whisper ~600MB, LFM2.5-VL-1.6B Q8_0 ~2.1GB) download on first use
-and are cached persistently in `~/.cache/scry/models/`.
+Models (whisper ~600MB, LFM2.5-VL-1.6B Q8_0 ~2.1GB) are cached in
+`~/.cache/scry/models/`.
 
 ## Commands
 
 ```bash
 # TikTok: download + transcription + comments + consensus
-.venv/bin/scry tiktok "https://www.tiktok.com/@user/video/1234567890"
+scry tiktok "https://www.tiktok.com/@user/video/1234567890"
 
 # Instagram (reel/video -> STT + VLM frames; photo/carousel -> VLM)
-.venv/bin/scry instagram "https://www.instagram.com/reel/XXXX/"
+scry instagram "https://www.instagram.com/reel/XXXX/"
 
-# Platform autodetect
-.venv/bin/scry auto "https://vm.tiktok.com/XXXXX/"
+# Platform autodetect (also handles short links)
+scry auto "https://vm.tiktok.com/XXXXX/"
 
 # Metadata + comments only (no download/stt)
-.venv/bin/scry tiktok "<url>" --no-download --no-stt
+scry tiktok "<url>" --no-download --no-stt
 
 # Main options
 #   --max-comments N    comments to analyze (default 30)
@@ -75,35 +74,33 @@ and are cached persistently in `~/.cache/scry/models/`.
 #   --headless          browser without a window (more detectable)
 ```
 
-Run from the project root (`/home/matteo/scry`) so the local cookie files
-are picked up automatically.
+Outputs are saved in `/tmp/scry/output/<timestamp>-<platform>-<id>.{md,json}`
+(per-run data is **ephemeral** by default: lost on reboot; set
+`SCRY_DATA_DIR=/elsewhere` to keep it). Progress logs use an `[HH:MM:SS]`
+prefix; the final markdown goes to stdout.
 
-**TikTok URL note**: always use the full `@user/video/<id>` URL (as copied
-from the share button). The bare `tiktok.com/video/<id>` URL may return
-404; when that happens, the tool automatically retries with the author
-recovered from oEmbed.
+**TikTok URL note**: prefer the full `@user/video/<id>` URL (as copied from
+the share button). The bare `tiktok.com/video/<id>` URL may return 404; when
+that happens the tool automatically retries with the author recovered from
+oEmbed.
 
 **Instagram comments note**: comments open in a popup (no dedicated URL).
-The browser clicks the comments icon, waits for the popup, and extracts
-from the DOM: text, usernames, likes, timestamps, and 📷 any
-images/stickers attached to the comment (reported in the output).
-Collapsed nested replies ("N replies") are not in the DOM: the top-level
-comments are extracted, which are the most relevant for consensus.
-
-Progress logs use an `[HH:MM:SS]` prefix; the final markdown goes to
-stdout. Outputs are saved in `/tmp/scry/output/<timestamp>-<platform>-<id>.{md,json}`
-(per-run data is **ephemeral** by default: lost on reboot; to keep it set
-`SCRY_DATA_DIR=/elsewhere`).
+The browser clicks the comments icon, waits for the popup, and extracts from
+the DOM: text, usernames, likes, timestamps, and any images/stickers
+attached to the comment (reported in the output). Collapsed nested replies
+("N replies") are not in the DOM: top-level comments are extracted, which
+are the most relevant for consensus.
 
 ## Cookies (when needed and how)
 
-Public content mostly works without login. If the output contains a
-"login wall" / "cookies" error, ask the user to export cookies from their
-browser (extension **Cookie-Editor** → Export Netscape) while logged in on:
-- `tiktok.com` → save as `/home/matteo/scry/tiktok_cookies.txt`
-- `instagram.com` → save as `/home/matteo/scry/instagram_cookies.txt`
+Public content mostly works without login. Cookie lookup order: env
+`SCRY_COOKIES[_TIKTOK/_INSTAGRAM]` → `<platform>_cookies.txt` in the current
+directory → `~/.config/scry/<platform>_cookies.txt`.
 
-The tool picks them up automatically (no flag needed). Note: from
+If the output contains a "login wall" / "cookies" error, ask the user to
+export cookies from their browser (extension **Cookie-Editor** → Export
+Netscape) while logged in on `tiktok.com` / `instagram.com`, and save the
+file accordingly (e.g. `~/.config/scry/instagram_cookies.txt`). From
 datacenter IPs TikTok/Instagram degrade service; from a residential IP
 everything works better. If a run fails due to an IP block, tell the user
 clearly.
@@ -148,9 +145,8 @@ When the user asks "is it true?" / "is it reliable?":
    - High-like, high-reply comments are the strongest signals.
 4. **Independent verification**: the comment heuristic is NOT a factual
    source. If the claim is factual (numbers, events, health, money),
-   verify with a web search (skill `firecrawl-mastery`) before confirming
-   or refuting. Always distinguish: "the community thinks that..." vs
-   "the facts say that...".
+   verify with a web search before confirming or refuting. Always
+   distinguish: "the community thinks that..." vs "the facts say that...".
 
 ### Answer template for the user
 
@@ -158,15 +154,17 @@ Typical structure (adapt as needed):
 - **What it is**: 1-2 lines (author, type, key stats).
 - **What it says**: summary of the claim (caption + voice + image text).
 - **What people think**: consensus (ratio, top comments with likes,
-   divisions if present).
-- **Reliability**: combined judgment (author? community? sources?
-   web verification if factual). Use the heuristic's disclaimer: comment
-   likes = community validation, not truth.
+  divisions if present).
+- **Reliability**: combined judgment (author? community? sources? web
+  verification if factual). Use the heuristic's disclaimer: comment likes
+  = community validation, not truth.
 
 ## Known limits (declare them when relevant)
 
-- STT can get proper nouns/slang wrong: if the transcript is ambiguous
-  and it matters, say so.
+- STT can get proper nouns/slang wrong: if the transcript is ambiguous and
+  it matters, say so.
+- The VLM (1.6B) is small: short descriptions, occasional imperfections,
+  on-screen text can drop or alter words.
 - Comments are top-N by likes, not the full corpus: bias toward
   "mainstream" comments (radical minorities don't surface).
 - The consensus heuristic is lexical EN/IT: comments in other languages
@@ -175,30 +173,6 @@ Typical structure (adapt as needed):
   produced data", the page format probably changed or a login is needed
   → ask for cookies.
 - Instagram comments are those visible in the popup (top-level, ~15-30
-  with one scroll): not the full corpus. If the popup doesn't open
-  (layout changed), the report says so in `tiers`.
-- The Camoufox browser opens a window on the user's display :1 for
-  ~30-60s during Instagram runs that use the fallback.
-
-## Project files
-
-```
-/home/matteo/scry/
-├── scry/
-│   ├── cli.py              CLI (tiktok|instagram|auto <url> [options], setup)
-│   ├── common.py           curl_cffi sessions, URL parsing, ffmpeg, output
-│   ├── stt.py              faster-whisper wrapper
-│   ├── vision.py           LFM2.5-VL-1.6B wrapper (GGUF via llama-cpp-python)
-│   ├── browser.py          Camoufox wrapper (Session: open/popup/extract/download)
-│   ├── tiktok.py           TikTok pipeline (page → comments API → oEmbed)
-│   ├── instagram.py        Instagram pipeline (curl → browser XDT → comments popup)
-│   └── consensus.py        comment consensus/reliability heuristic
-├── pyproject.toml          packaging (pip install scry-social)
-├── notes/                  RESEARCH.md (source of decisions), DECISIONS.md
-├── README.md / LICENSE     docs + MIT license
-└── ~/.cache/scry/models/   model cache (whisper, lfm2.5-vl) — persistent
-
-# Per-run data (ephemeral, by default):
-/tmp/scry/downloads/<platform>-<id>/   media, audio, frames
-/tmp/scry/output/<ts>-<platform>-<id>.{md,json}
-```
+  with one scroll): not the full corpus.
+- The Camoufox browser opens a window on the user's display for ~30-60s
+  during Instagram runs that use the fallback.
