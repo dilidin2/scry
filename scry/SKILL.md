@@ -1,16 +1,6 @@
 ---
 name: scry
-description: Scrape TikTok videos and Instagram posts (videos, reels, photos,
-  carousels) and turn them into LLM-readable intel: transcripts (STT), visual
-  understanding (image description + on-screen text via a small VLM),
-  captions, stats, and top comments with a community consensus/reliability
-  score. Use this skill whenever the user shares a TikTok or Instagram link
-  and wants to know what's in it, what it says, what people think about it,
-  or wants its content analyzed/summarized. Also use when the user asks to
-  "watch" a TikTok/IG post, transcribe a reel, read the comments, or check
-  if a claim is supported by the community. Everything runs CPU-only (no
-  GPU; a lightweight browser is only launched for Instagram when the fast
-  path fails).
+description: Scrape TikTok videos and Instagram posts (videos, reels, photos, carousels) and turn them into LLM-readable intel (STT transcripts, visual understanding via a small VLM, image description plus on-screen text, captions, stats) plus top comments with a community consensus/reliability score. Use this skill whenever the user shares a TikTok or Instagram link and wants to know what is in it, what it says, or what people think about it, or asks to watch a TikTok or IG post, transcribe a reel, read the comments, or check if a claim is supported by the community. Everything runs CPU-only (no GPU; a lightweight browser is only launched for Instagram when the fast path fails).
 license: MIT
 ---
 
