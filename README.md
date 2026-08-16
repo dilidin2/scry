@@ -121,20 +121,24 @@ The consensus score is a deliberately simple, transparent lexical
 heuristic (EN/IT) weighted by comment likes. It is an **indicator, not
 truth** — treat it as context, and verify factual claims independently.
 
-### Cookies (optional)
+### Cookies
 
-Public content mostly works without login. If a run hits a login wall,
-export cookies from a logged-in browser (extension **Cookie-Editor** →
-Export Netscape) and save as `tiktok_cookies.txt` /
-`instagram_cookies.txt` — in the current directory or in
-`~/.config/scry/` — they are picked up automatically. A residential IP
-works much better than a datacenter one.
+TikTok metadata has a single path — the logged-in page fetch — so TikTok
+needs `tiktok_cookies.txt`. Instagram mostly works without login (the
+browser tier covers it), but cookies make it more reliable, especially from
+a datacenter IP.
+
+To get them: in a browser where you're logged in on `tiktok.com` /
+`instagram.com`, use the extension **Cookie-Editor** → *Export Netscape*, and
+save as `tiktok_cookies.txt` / `instagram_cookies.txt` — in the current
+directory or in `~/.config/scry/`. They are picked up automatically. A
+residential IP works much better than a datacenter one.
 
 ## How it works (tiers)
 
 | Platform | Tier 1 (fast) | Tier 2 (fallback) |
 |---|---|---|
-| TikTok | `curl_cffi` with Chrome 136 TLS impersonation → page JSON → direct CDN download → comments API | — (no fallback; metadata needs a logged-in session, see [Cookies](#cookies-optional)) |
+| TikTok | `curl_cffi` with Chrome 136 TLS impersonation → page JSON → direct CDN download → comments API | — (no fallback; metadata needs a logged-in session, see [Cookies](#cookies)) |
 | Instagram | `curl_cffi` → embedded page data (XDT/`__additionalData`) + og meta | **Camoufox** (headed anti-detect Firefox): opens the post, reads page data, opens the comments popup, extracts comments from the DOM |
 
 Media download: direct CDN URLs first, then the browser's request

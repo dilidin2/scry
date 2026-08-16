@@ -79,19 +79,23 @@ attached to the comment (reported in the output). Collapsed nested replies
 ("N replies") are not in the DOM: top-level comments are extracted, which
 are the most relevant for consensus.
 
-## Cookies (when needed and how)
+## Cookies (how to get and name them)
 
-Public content mostly works without login. Cookie lookup order: env
-`SCRY_COOKIES[_TIKTOK/_INSTAGRAM]` → `<platform>_cookies.txt` in the current
-directory → `~/.config/scry/<platform>_cookies.txt`.
+TikTok metadata has a single path — the logged-in page fetch — so TikTok
+**requires** `tiktok_cookies.txt`. Instagram mostly works without login
+(browser tier), but cookies make it more reliable, especially from datacenter
+IPs.
 
-If the output contains a "login wall" / "cookies" error, ask the user to
-export cookies from their browser (extension **Cookie-Editor** → Export
-Netscape) while logged in on `tiktok.com` / `instagram.com`, and save the
-file accordingly (e.g. `~/.config/scry/instagram_cookies.txt`). From
-datacenter IPs TikTok/Instagram degrade service; from a residential IP
-everything works better. If a run fails due to an IP block, tell the user
-clearly.
+Cookie lookup order: env `SCRY_COOKIES[_TIKTOK/_INSTAGRAM]` →
+`<platform>_cookies.txt` in the current directory →
+`~/.config/scry/<platform>_cookies.txt`.
+
+To get them: ask the user to export cookies from their browser (extension
+**Cookie-Editor** → Export Netscape) while logged in on `tiktok.com` /
+`instagram.com`, and save as `tiktok_cookies.txt` / `instagram_cookies.txt`
+(e.g. `~/.config/scry/instagram_cookies.txt`). From datacenter IPs
+TikTok/Instagram degrade service; from a residential IP everything works
+better. If a run fails due to an IP block, tell the user clearly.
 
 ## How to read the output (and how to use it)
 
