@@ -130,12 +130,16 @@ class Session:
         return page.content(), page.url
 
     # -- comments (popup) --------------------------------------------------------
-    def open_comments_popup(self, *, tries: int = 6, wait_ms: int = 4000) -> bool:
-        """Click the comments icon to open the popup. Returns True if at
-        least one comment ends up in the DOM.
+    def open_comments_popup(self, *, wait_ms: int = 4000) -> bool:
+        """Click the comments icon to open the popup.
 
-        IG selectors change often: we try several candidates and verify the
-        effect (presence of /p/.../c/<id>/ permalinks in the DOM).
+        Returns True if the popup opened: either comments are already in
+        the DOM, or the popup's comment input is present (very large posts
+        load their first comments lazily - extract_comments then scrolls
+        the list and pulls them in).
+
+        IG selectors change often: we try several click candidates and
+        verify the effect (a /p/.../c/<id>/ permalink in the DOM).
         """
         page = self.page
         candidates = [
@@ -152,23 +156,53 @@ class Session:
                 if loc.count() == 0:
                     continue
                 loc.first.click(timeout=5000)
-                # comments can take a few seconds to populate
-                for _ in range(wait_ms // 2000 + 8):
+                # comments can take a few seconds to populate; on very
+                # large posts the popup opens before its first batch
+                # loads, so accept the popup input as proof of success
+                for _ in range(max(3, wait_ms // 2000 + 4)):
                     page.wait_for_timeout(2000)
-                    n = self.comment_count()
-                    if n > 0:
-                        log(f"Browser: comments popup open ({sel}, {n} elements)")
+                    n = self._comments_visible()
+                    if n:
+                        log(f"Browser: comments popup open ({sel}, {n} "
+                            "comments in the DOM)")
+                        return True
+                    if self._popup_open():
+                        log(f"Browser: comments popup open ({sel}); the "
+                            "comments may still be loading")
                         return True
             except Exception:
                 continue
-        return self.comment_count() > 0
+        return self._comments_visible() > 0 or self._popup_open()
 
     def comment_count(self) -> int:
+        return self._comments_visible()
+
+    def _comments_visible(self) -> int:
+        """Number of comment permalinks (a[href*="/c/"]) in the DOM."""
         try:
             return self.page.evaluate(
                 '''() => document.querySelectorAll('a[href*="/c/"]').length''')
         except Exception:
             return 0
+
+    def _popup_open(self) -> bool:
+        """True if the comments popup seems open even though no comment is
+        in the DOM yet: the popup's comment input is present (its
+        placeholder mentions commenting; the input only exists inside the
+        popup)."""
+        try:
+            return self.page.evaluate(
+                '''() => {
+                    const els = document.querySelectorAll(
+                        'div[placeholder], input[placeholder], textarea[placeholder]');
+                    for (const el of els) {
+                        const p = el.getAttribute('placeholder') || '';
+                        if (/comment/i.test(p)) return true;
+                    }
+                    return false;
+                }''')
+        except Exception:
+            return False
 
     def extract_comments(self, *, max_scrolls: int = 3, min_comments: int = 0,
                          scroll_ms: int = 2500) -> list[dict]:

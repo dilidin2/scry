@@ -40,7 +40,7 @@ Optional local VLM — only if the model consuming the output has no vision
 of its own (if it does, pass the Media files to it instead):
 
 ```bash
-scry setup --vision                # one-time: Qwen3.5-0.8B Q8_0 (~1.1GB)
+scry setup --vision                # one-time: Qwen3.5-0.8B Q8_0 (~1GB)
 ```
 `scry setup --vision` detects your accelerator (NVIDIA CUDA, AMD ROCm,
 Apple Metal, or CPU) and installs the matching **precompiled** llama.cpp
@@ -66,7 +66,7 @@ skips the GPU attempt entirely.
 From source: `git clone <this-repo> && cd scry && pip install -e .`
 (add `[vision]` if you want the VLM).
 
-Models (Whisper ~600MB, VLM ~1.1GB) download on demand and are cached
+Models (Whisper ~600MB, VLM ~1GB) download on demand and are cached
 persistently in `~/.cache/scry/models/`.
 
 ### For agents (you are an LLM reading this)

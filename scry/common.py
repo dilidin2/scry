@@ -206,9 +206,9 @@ def make_session() -> "requests.Session":
 def add_netscape_cookies(session, path: str) -> int:
     """Load a Netscape cookies file into the curl_cffi session.
 
-    Returns how many cookies were loaded. Format: as exported by
-    extensions like 'Get cookies.txt LOCALLY' (one line per cookie,
-    tab-separated, 7 fields).
+    Returns how many cookies were loaded. Format: Netscape (as exported
+    by the Cookie-Editor extension, Export -> Netscape): one line per
+    cookie, tab-separated, 7 fields.
     """
     n = 0
     with open(path) as f:
@@ -252,6 +252,36 @@ def missing_media_tools() -> list[str]:
     return [b for b in ("ffmpeg", "ffprobe") if shutil.which(b) is None]
 
 
+def camoufox_exe() -> str | None:
+    """Path of the installed Camoufox executable, or None if not installed.
+
+    `camoufox fetch` exits 0 even when it cannot download any version
+    (e.g. the upstream release index is unreachable, so it syncs 0
+    versions and the requested one is 'not found in cache'): callers
+    must verify the install on disk before claiming success. Never
+    triggers a download.
+    """
+    try:
+        from camoufox import pkgman
+        try:
+            inst = pkgman.camoufox_path(download_if_missing=False)
+        except TypeError:
+            # older camoufox without the kwarg: check the install dir
+            # directly (no API call that could auto-download)
+            if pkgman.OS_NAME == "mac":
+                cand = (Path(pkgman.INSTALL_DIR) / "Camoufox.app" / "Contents"
+                        / "MacOS" / "camoufox")
+            else:
+                cand = Path(pkgman.INSTALL_DIR) / pkgman.LAUNCH_FILE[pkgman.OS_NAME]
+            return str(cand) if cand.exists() else None
+        exe = pkgman.launch_path(browser_path=inst)
+        return exe if Path(exe).exists() else None
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+
 _warned: set[str] = set()
 
 
@@ -277,19 +307,41 @@ def video_duration(path: str) -> float:
         return 0.0
 
 
-def extract_audio(video_path: str, wav_path: str) -> bool:
-    """Video -> 16kHz mono WAV (ideal format for Whisper)."""
+def has_audio_stream(video_path: str) -> bool | None:
+    """True if the file has at least one audio stream, False if it has
+    none, None if ffprobe cannot decide (missing binary, unreadable)."""
+    rc, out, _ = run_cmd(["ffprobe", "-v", "error", "-select_streams", "a",
+                          "-show_entries", "stream=codec_type",
+                          "-of", "csv=p=0", video_path], timeout=30)
+    if rc != 0:
+        return None
+    return any(line.strip() for line in out.splitlines())
+
+
+def extract_audio(video_path: str, wav_path: str) -> tuple[bool, str]:
+    """Video -> 16kHz mono WAV (ideal format for Whisper).
+
+    Returns (ok, note). On failure note explains the cause; 'no audio
+    track in video' is not an error state: the video simply has nothing
+    to transcribe.
+    """
     rc, _, err = run_cmd(
         ["ffmpeg", "-y", "-v", "error", "-i", video_path,
          "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav_path],
         timeout=300)
+    if rc == 0 and Path(wav_path).exists():
+        return True, ""
     if rc == 127:  # binary not found
         _media_warn("ffmpeg", "ffmpeg not found on PATH - install ffmpeg "
                               "(audio extraction will be unavailable)")
-    elif rc != 0:
-        _media_warn(f"ffmpeg:{video_path}",
-                    f"ffmpeg failed on {video_path}: {err.strip()[:200]}")
-    return rc == 0 and Path(wav_path).exists()
+        return False, "audio extraction failed (ffmpeg not installed)"
+    if has_audio_stream(video_path) is False:
+        # ffmpeg exits non-zero ("Output file does not contain any stream")
+        # when the input simply has no audio track
+        return False, "no audio track in video"
+    _media_warn(f"ffmpeg:{video_path}",
+                f"ffmpeg failed on {video_path}: {err.strip()[:200]}")
+    return False, "audio extraction failed"
 
 
 def extract_frames(video_path: str, outdir: str, n: int = 3) -> list[str]:

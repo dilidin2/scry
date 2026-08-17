@@ -14,7 +14,7 @@ once on CPU. Use --cpu (or SCRY_VLM_GPU=0) to skip the GPU attempt.
 
 One-time setup:
     scry setup --vision    (precompiled llama-cpp-python wheel for your
-                            accelerator + ~1.1 GB model in ~/.cache/scry)
+                            accelerator + ~1 GB model in ~/.cache/scry)
 
 Model: unsloth/Qwen3.5-0.8B-GGUF (Qwen3.5-0.8B-Q8_0 + mmproj-F16).
 """
@@ -55,7 +55,7 @@ def model_dir() -> Path:
 
 
 def setup_vision() -> None:
-    """Download model + vision projector (one-time, ~2.1 GB)."""
+    """Download model + vision projector (one-time, ~1 GB)."""
     from huggingface_hub import hf_hub_download
 
     d = model_dir()

@@ -40,7 +40,7 @@ vision of its own** (if it does, prefer passing the Media files to it):
 ```bash
 scry setup --vision               # installs the precompiled llama-cpp-python
                                   # wheel for your accelerator (CUDA/ROCm/Metal,
-                                  # or CPU) + Qwen3.5-0.8B Q8_0 (~1.1GB)
+                                  # or CPU) + Qwen3.5-0.8B Q8_0 (~1GB)
 scry setup --vision --backend rocm  # force a backend (auto|cuda|rocm|metal|cpu)
 ```
 
@@ -50,7 +50,7 @@ needs no ffmpeg). A C compiler is optional:
 it is only used by `--backend cpu` to build a tuned llama-cpp-python from
 source; without one `scry setup --vision` falls back to a prebuilt basic-CPU
 wheel, and on supported GPUs it downloads a precompiled wheel instead. Models
-(whisper ~600MB, VLM ~1.1GB) are cached in `~/.cache/scry/models/`.
+(whisper ~600MB, VLM ~1GB) are cached in `~/.cache/scry/models/`.
 
 ## Commands
 

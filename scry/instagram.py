@@ -256,15 +256,20 @@ def og_meta(html: str) -> dict:
 def _download_url(session, url: str, dest: Path) -> bool:
     """Direct media download (2 attempts, backoff)."""
     def _one():
-        with session.stream(url, impersonate=IMPERSONATE, timeout=60) as r:
+        with session.stream("GET", url, impersonate=IMPERSONATE, timeout=60) as r:
             if r.status_code in (429, 500, 502, 503, 504):
                 raise TransientError(f"HTTP {r.status_code}")
             if r.status_code != 200:
                 raise RuntimeError(f"HTTP {r.status_code}")
-            data = r.content
-        if not data:
+            # consume the stream in chunks: r.content inside a stream() context
+            # is empty in curl_cffi 0.15.x
+            n = 0
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(chunk_size=256 * 1024):
+                    f.write(chunk)
+                    n += len(chunk)
+        if n == 0:
             raise TransientError("empty response")
-        dest.write_bytes(data)
         return True
 
     try:
@@ -355,9 +360,10 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
 
     session = make_session()
     ck = cookies or default_cookies("instagram")
+    n_cookies = None
     if ck and Path(ck).exists():
-        n = add_netscape_cookies(session, ck)
-        log(f"Instagram: {n} cookies loaded from {ck}")
+        n_cookies = add_netscape_cookies(session, ck)
+        log(f"Instagram: {n_cookies} cookies loaded from {ck}")
 
     code = info["id"]
     result: dict = {"platform": "instagram", "url": info["canonical"],
@@ -431,10 +437,7 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
             result["tiers"]["browser"] = f"error: {type(e).__name__}: {e}"
 
     if not media:
-        result["error"] = ("No method produced post data. "
-                           "A valid login is probably needed: export your cookies from the "
-                           "browser ('Get cookies.txt LOCALLY' extension) and retry "
-                           "with --cookies cookies.txt")
+        result["error"] = _no_data_error(result["tiers"], n_cookies)
         return result, render(result)
 
     result["metadata"] = {
@@ -478,12 +481,13 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
     if video_path and do_stt:
         wav = str(outdir / f"{code}.wav")
         log("Instagram: extracting audio...")
-        if extract_audio(video_path, wav):
+        ok, why = extract_audio(video_path, wav)
+        if ok:
             log(f"Instagram: STT (model {stt_model})...")
             from .stt import transcribe
             result["transcript"] = transcribe(wav, model=stt_model, language=language)
         else:
-            result["transcript"] = {"error": "audio extraction failed"}
+            result["transcript"] = {"error": why or "audio extraction failed"}
     if not do_download and do_stt:
         result["stt"] = {"skipped": "download disabled"}
 
@@ -539,6 +543,37 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
 
     result["files"] = {"dir": str(outdir)}
     return result, render(result)
+
+
+# ---------------------------------------------------------------------------
+# Error messages
+# ---------------------------------------------------------------------------
+def _no_data_error(tiers: dict, n_cookies: int | None) -> str:
+    """Final error when no tier produced post data.
+
+    Surfaces a hard browser failure (e.g. missing Camoufox install) instead
+    of assuming a login problem, and doesn't suggest --cookies when a cookie
+    file was already auto-loaded (in that case the session is probably just
+    expired).
+    """
+    berr = (tiers or {}).get("browser", "")
+    if berr.startswith("error:"):
+        msg = f"No method produced post data (browser tier failed: {berr[len('error:'):].strip()})"
+        if "CamoufoxNotInstalled" in berr:
+            msg += (" Run 'scry setup' (or 'python -m camoufox fetch') to "
+                    "install the browser, then re-run.")
+        return msg
+    base = "No method produced post data."
+    if n_cookies:
+        return (f"{base} {n_cookies} cookies were loaded from the cookie "
+                "file, but the page still gave no data: the session may have "
+                "expired - re-export the cookies (Cookie-Editor extension: "
+                "Export -> Netscape) and retry, or wait a bit and retry (rate "
+                "limit / checkpoint).")
+    return (base + " A valid login is probably needed: export your cookies "
+                "from the browser (Cookie-Editor extension: Export -> "
+                "Netscape) and retry with --cookies cookies.txt, or place "
+                "them in ~/.config/scry/instagram_cookies.txt")
 
 
 # ---------------------------------------------------------------------------

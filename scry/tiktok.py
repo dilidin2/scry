@@ -403,12 +403,13 @@ def process(url: str, *, do_stt: bool = True, do_comments: bool = True,
             if do_stt:
                 wav = str(outdir / f"{video_id}.wav")
                 log("TikTok: extracting audio...")
-                if extract_audio(vpath, wav):
+                ok, why = extract_audio(vpath, wav)
+                if ok:
                     log(f"TikTok: STT (model {stt_model})...")
                     from .stt import transcribe
                     result["transcript"] = transcribe(wav, model=stt_model, language=language)
                 else:
-                    result["transcript"] = {"error": "audio extraction failed"}
+                    result["transcript"] = {"error": why or "audio extraction failed"}
             # local paths for agents that have their own vision
             result["media_files"] = [vpath] + extract_frames(
                 vpath, str(outdir / "frames"), n=3)

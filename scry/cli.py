@@ -8,7 +8,7 @@ Usage:
   scry setup -v                   (one-time: vision stack — installs the
                                    matching precompiled llama-cpp-python wheel
                                    (CUDA/ROCm/Metal, or CPU) + Qwen3.5-0.8B
-                                   model, ~1.1GB)
+                                   model, ~1GB)
   scry setup -v --backend NAME    (auto|cuda|rocm|metal|cpu, default auto)
   scry setup --all                (both)
   scry skill                      (show the bundled agent skill)
@@ -18,7 +18,7 @@ Usage:
 Common options:
   --max-comments N     comments to analyze (default 30)
   --no-comments        skip comments+consensus
-  --stt-model NAME     whisper: base|small|medium|large-v3 (default small)
+  --stt-model NAME     whisper: tiny|base|small|medium|large-v3 (default small)
   --language CODE      force STT language (default: auto-detect)
   --no-stt             skip transcription
   -v, --vision         run the local VLM visual analysis (instagram; needs
@@ -59,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("-v", "--vision", action="store_true",
                     help="install the vision stack: llama-cpp-python wheel for "
                          "your GPU (precompiled; no C compiler needed) + the "
-                         "Qwen3.5-0.8B Q8_0 model (~1.1GB)")
+                         "Qwen3.5-0.8B Q8_0 model (~1GB)")
     sp.add_argument("--all", action="store_true",
                     help="download both browser and vision model")
     sp.add_argument("--backend", default="auto",
@@ -122,22 +122,37 @@ def main() -> int:
 
     if cmd == "setup":
         import subprocess
-        from .common import log
+        from .common import camoufox_exe, log
         want_browser = not (args.vision and not args.all)
         want_vision = args.vision or args.all
         if not want_browser and not want_vision:
             want_browser = True  # bare `scry setup` = browser (legacy behavior)
         rc = 0
         if want_browser:
-            log("Setup: downloading the Camoufox browser (one-time, ~150MB)...")
+            log("Setup: downloading the Camoufox browser (one-time, ~200MB)...")
             t0 = time.time()
+            fetch_ok = True
             try:
                 subprocess.run([sys.executable, "-m", "camoufox", "fetch"],
                                check=True)
             except subprocess.CalledProcessError as e:
                 log(f"Setup: browser fetch failed ({e})")
+                fetch_ok = False
+            # camoufox fetch exits 0 even when it finds no version to
+            # download (e.g. GitHub unreachable): verify on disk before
+            # claiming success
+            exe = camoufox_exe()
+            if not fetch_ok:
                 rc = 1
-            log(f"Setup: browser done in {time.time()-t0:.0f}s")
+            if exe:
+                log(f"Setup: browser ready in {time.time()-t0:.0f}s ({exe})")
+            else:
+                log("Setup: browser NOT ready - no installed Camoufox found "
+                    "on disk after fetch (the download probably failed, e.g. "
+                    "GitHub unreachable). Re-run 'scry setup' later; "
+                    "Instagram's browser fallback won't work until it is "
+                    "installed.")
+                rc = 1
         if want_vision:
             t0 = time.time()
             try:
