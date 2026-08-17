@@ -135,19 +135,21 @@ def classify_url(url: str) -> dict:
 
 
 def resolve_share_url(session, url: str) -> str | None:
-    """Resolve a tiktok short link (vm.tiktok.com/...) to the canonical URL.
+    """Resolve a tiktok short link (vm.tiktok.com/...) to its landing URL.
 
     The redirect target already carries the full /@user/video/<id> path
     (plus tracking query params, which are dropped): a bare /video/<id>
     URL returns 404 on TikTok (see classify_url), so the @user segment
-    must be preserved. Returns None if unresolvable (e.g. blocked IP).
+    must be preserved. The landing URL is returned as-is even when it is
+    NOT a video page (login wall, rate limit, profile, dead link) so the
+    caller can classify it and report where the link landed; query params
+    are dropped in all cases. Returns None only if unresolvable (network
+    error or non-TikTok redirect target).
     """
     try:
         r = session.get(url, impersonate=IMPERSONATE, allow_redirects=True, timeout=20)
         p = urlparse(str(r.url))
         if "tiktok.com" not in p.netloc.lower():
-            return None
-        if not re.search(r"/(?:video|v)/\d+", p.path):
             return None
         return f"https://www.tiktok.com{p.path}"
     except Exception:

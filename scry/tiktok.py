@@ -318,12 +318,18 @@ def process(url: str, *, do_stt: bool = True, do_comments: bool = True,
     if info["kind"] == "share":
         log("TikTok: resolving short link...")
         final = resolve_share_url(session, url)
-        if final:
-            info = classify_url(final)
-            log(f"TikTok: short link -> {final}")
-        else:
-            return ({"error": "Could not resolve the short link (IP blocked by TikTok)"},
+        if not final:
+            return ({"error": "Could not resolve the short link (network error "
+                              "or IP blocked by TikTok)"},
                     "Error: unresolvable short link")
+        info = classify_url(final)
+        if not info:
+            # redirect landed on a non-video page (login wall / rate limit,
+            # profile, dead link): report where it landed instead of crashing
+            return ({"error": f"Short link landed on a non-video page (login "
+                              f"wall, rate limit, profile or dead link): {final}"},
+                    f"Error: short link -> {final}")
+        log(f"TikTok: short link -> {final}")
 
     video_id = info["id"]
     result: dict = {"platform": "tiktok", "url": info["canonical"], "id": video_id,
