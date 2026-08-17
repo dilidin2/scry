@@ -147,12 +147,13 @@ For one URL you get a Markdown report (plus raw JSON) with:
    directly with its own model
 6. **Top comments** — most-liked comments with like/reply counts
    (Instagram: including images/stickers attached to comments)
-7. **Consensus (heuristic)** — agree/disagree/neutral counts and an
-   agreement ratio, as a *pre-LLM* signal of community alignment
+7. **Consensus (likes-based)** — which comments the community
+   "validated" (a meaningful share of the video's likes = readers who
+   agree upvoted). Stance (agree/disagree) is left to the reader
 
-The consensus score is a deliberately simple, transparent lexical
-heuristic (EN/IT) weighted by comment likes. It is an **indicator, not
-truth** — treat it as context, and verify factual claims independently.
+The consensus is a deliberately simple, transparent like-count
+heuristic. It is an **indicator, not truth** — treat it as context, and
+verify factual claims independently.
 
 ### Cookies
 
@@ -236,8 +237,8 @@ screenshot/OCR.
   mainstream opinions (declared in every report).
 - Instagram: top-level comments in the popup (~15–30 with one scroll);
   collapsed nested replies are not extracted.
-- The consensus heuristic is lexical (EN/IT); other languages count as
-  neutral.
+- The consensus is likes-based: comment likes say how much the community
+  upvoted a comment, not what it means — stance is for the reader.
 - Both platforms change their page formats; when a tier fails, the report
   says which one and why. `notes/RESEARCH.md` documents the current
   formats.
@@ -255,7 +256,7 @@ scry/
   browser.py            Camoufox wrapper (page open, comments popup, download)
   tiktok.py             TikTok pipeline
   instagram.py          Instagram pipeline
-  consensus.py          lexical consensus/reliability heuristic
+  consensus.py          likes-based comment reliability
 pyproject.toml          packaging (pip install scry-social)
 notes/                  RESEARCH.md (format docs), DECISIONS.md (rationale)
 ```

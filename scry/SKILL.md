@@ -152,10 +152,10 @@ The markdown has stable sections:
    you read. The paths are ephemeral by default (see above).
 6. **Top N comments (by likes)**: the most "validated" comments by the
    community. Each comment has likes and replies.
-7. **Comment consensus (heuristic)**: counts agree/disagree/neutral and
-   gives an `agreement_ratio` among those with a clear opinion. Lists the
-   most "validated" comments (many likes = the community agrees with that
-   opinion).
+7. **Comment consensus (likes-based)**: per-comment reliability — a
+   comment is "validated" when it gathers a meaningful share of the
+   video's likes (readers who agree upvote). Stance (agree/disagree)
+   is not computed: read the comment.
 
 ### Calculating the reliability of a claim (procedure)
 
@@ -167,10 +167,11 @@ When the user asks "is it true?" / "is it reliable?":
 2. **Who says it**: check the author (verified? followers? does the video
    cite sources?). Engagement stats (views/likes ratio) give a hint of
    reach but NOT of truth.
-3. **The community**: look at `agreement_ratio` + high-like comments.
-   - High ratio + agreeing top comments → the community is aligned
-     (caveat: alignment ≠ truth; it can be an echo chamber or hype).
-   - Low ratio / contrary top comments → the community is divided or
+3. **The community**: read the high-reliability comments (high likes,
+   active threads) and judge their stance yourself.
+   - Agreeing top comments → the community is aligned (caveat:
+     alignment ≠ truth; it can be an echo chamber or hype).
+   - Contrary high-like comments → the community is divided or
      opposed: flag this explicitly.
    - High-like, high-reply comments are the strongest signals.
 4. **Independent verification**: the comment heuristic is NOT a factual
@@ -183,8 +184,8 @@ When the user asks "is it true?" / "is it reliable?":
 Typical structure (adapt as needed):
 - **What it is**: 1-2 lines (author, type, key stats).
 - **What it says**: summary of the claim (caption + voice + image text).
-- **What people think**: consensus (ratio, top comments with likes,
-  divisions if present).
+- **What people think**: what the high-like comments say (stance is
+  yours to read), divisions if present.
 - **Reliability**: combined judgment (author? community? sources? web
   verification if factual). Use the heuristic's disclaimer: comment likes
   = community validation, not truth.
@@ -200,8 +201,8 @@ Typical structure (adapt as needed):
   on-screen text can drop or alter words.
 - Comments are top-N by likes, not the full corpus: bias toward
   "mainstream" comments (radical minorities don't surface).
-- The consensus heuristic is lexical EN/IT: comments in other languages
-  count as "neutral".
+- The consensus is likes-based: it says how much the community upvoted
+  a comment, not what it means. Stance is for the reader.
 - TikTok/Instagram change their formats: if a run fails with "no method
   produced data", the page format probably changed or a login is needed
   → ask for cookies.
