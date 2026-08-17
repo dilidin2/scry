@@ -9,10 +9,12 @@ sentiment model: read the results as hints.
 
 Logic:
 - agreement_score: lexical heuristic (EN/IT agree/disagree markers)
-- reliability: reliability proxy based on the comment's likes relative to
-  the video's likes + replies: a highly-liked comment is "validated" by
-  the community (readers who agree upvote -> comment likes are the
-  equivalent of a "yes" to that opinion)
+- reliability: reliability proxy based on the comment's likes relative
+  to the video's likes (>= 5% => "high"), with a replies-based bump for
+  active threads; when the video's likes are unknown, falls back to
+  >= 50% of the top comment's likes. A highly-liked comment is
+  "validated" by the community (readers who agree upvote -> comment
+  likes are the equivalent of a "yes" to that opinion)
 """
 from __future__ import annotations
 
@@ -59,6 +61,16 @@ def analyze_comments(comments: list[dict], video_likes: int | None = None) -> di
     """Analyze a list of comments (already sorted by likes, descending).
 
     Each comment: {username, text, likes, replies?}
+    `video_likes`: total likes of the video/post itself (optional).
+
+    Reliability thresholds:
+    - "high": >= 5% of the video's likes (when `video_likes` is known),
+      or an active thread (>= 20 replies) with >= 10 likes. Without a
+      video like count to normalize on, the like-based criterion falls
+      back to >= 50% of the top comment's likes.
+    - "medium": >= 10 likes, below the "high" bar.
+    - "low": fewer than 10 likes.
+
     Returns a dict with per-comment fields + aggregates.
     """
     if not comments:
@@ -66,10 +78,13 @@ def analyze_comments(comments: list[dict], video_likes: int | None = None) -> di
 
     likes_list = [c.get("likes") or 0 for c in comments]
     max_likes = max(likes_list) if likes_list else 0
-    # "community validated" threshold: >= 5% of the video's max likes
-    # (when known) or >= 50% of the top comment's likes (relative)
+    # "community validated" threshold: >= 5% of the video's likes when
+    # known; otherwise >= 50% of the top comment's likes (relative).
     abs_floor = 10
-    rel_floor = max(abs_floor, int(max_likes * 0.5))
+    if video_likes:
+        rel_floor = max(abs_floor, int(video_likes * 0.05))
+    else:
+        rel_floor = max(abs_floor, int(max_likes * 0.5))
 
     analyzed = []
     agree = disagree = neutral = 0
@@ -80,7 +95,7 @@ def analyze_comments(comments: list[dict], video_likes: int | None = None) -> di
         agree += s == "agree"
         disagree += s == "disagree"
         neutral += s == "neutral"
-        # reliability: high if likes are high in absolute AND relative terms
+        # reliability: high if community-validated (rel_floor) or an active thread
         if likes >= rel_floor or (replies >= 20 and likes >= abs_floor):
             reliability = "high"
         elif likes >= abs_floor:
