@@ -137,14 +137,19 @@ def classify_url(url: str) -> dict:
 def resolve_share_url(session, url: str) -> str | None:
     """Resolve a tiktok short link (vm.tiktok.com/...) to the canonical URL.
 
-    Returns None if unresolvable (e.g. blocked IP).
+    The redirect target already carries the full /@user/video/<id> path
+    (plus tracking query params, which are dropped): a bare /video/<id>
+    URL returns 404 on TikTok (see classify_url), so the @user segment
+    must be preserved. Returns None if unresolvable (e.g. blocked IP).
     """
     try:
         r = session.get(url, impersonate=IMPERSONATE, allow_redirects=True, timeout=20)
-        m = re.search(r"/(?:video|v)/(\d+)", str(r.url))
-        if m:
-            return f"https://www.tiktok.com/video/{m.group(1)}"
-        return str(r.url) if "tiktok.com" in str(r.url) else None
+        p = urlparse(str(r.url))
+        if "tiktok.com" not in p.netloc.lower():
+            return None
+        if not re.search(r"/(?:video|v)/\d+", p.path):
+            return None
+        return f"https://www.tiktok.com{p.path}"
     except Exception:
         return None
 
