@@ -80,6 +80,9 @@ def _add_opts(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("-v", "--vision", action="store_true",
                     help="local VLM visual analysis (needs the [vision] extra; "
                          "default: off)")
+    sp.add_argument("--cpu", action="store_true",
+                    help="with -v: run the VLM on CPU (skip the GPU attempt; "
+                         "equivalent to SCRY_VLM_GPU=0)")
     sp.add_argument("--no-download", action="store_true")
     sp.add_argument("--cookies", default=None, help="Netscape cookies file")
     sp.add_argument("--json", action="store_true", help="JSON only on stdout")
@@ -163,6 +166,8 @@ def main() -> int:
         language=args.language,
         cookies=args.cookies,
     )
+
+    kwargs["vlm_cpu"] = args.cpu
 
     if platform == "tiktok":
         if args.vision:

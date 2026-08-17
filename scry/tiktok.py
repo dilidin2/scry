@@ -295,10 +295,15 @@ def download_video(session, url: str, outdir: Path, video_id: str,
 # Full pipeline
 # ---------------------------------------------------------------------------
 def process(url: str, *, do_stt: bool = True, do_comments: bool = True,
-            do_download: bool = True, max_comments: int = 30,
+            do_download: bool = True, vlm_cpu: bool = False,
+            max_comments: int = 30,
             stt_model: str = "small", language: str | None = None,
             cookies: str | None = None) -> tuple[dict, str]:
-    """Run the full pipeline. Returns (result_dict, markdown)."""
+    """Run the full pipeline. Returns (result_dict, markdown).
+
+    vlm_cpu is reserved for the upcoming TikTok VLM (same semantics as in
+    instagram.process: skip the GPU attempt when True).
+    """
     info = classify_url(url)
     if not info:
         return {"error": f"Unrecognized TikTok URL: {url}"}, "Error: invalid URL"

@@ -320,7 +320,8 @@ def download_media(media: dict, code: str, session, cookies: str | None,
 # Full pipeline
 # ---------------------------------------------------------------------------
 def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
-            do_download: bool = True, do_comments: bool = True,
+            vlm_cpu: bool = False, do_download: bool = True,
+            do_comments: bool = True,
             max_comments: int = 30,
             stt_model: str = "small", language: str | None = None,
             cookies: str | None = None, use_browser: bool = True,
@@ -453,16 +454,17 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
     if do_vision and do_download:
         from . import vision
         if vision.vision_available():
+            gpu = not vlm_cpu  # --cpu / SCRY_VLM_GPU=0 skip the GPU attempt
             vis_out: dict = {}
             if images:
                 for i, img in enumerate(images, 1):
                     log(f"Instagram: VLM image {i}/{len(images)}...")
-                    r = vision.describe_image(img)
+                    r = vision.describe_image(img, gpu=gpu)
                     if r.get("text"):
                         vis_out[f"image_{i}"] = r["text"]
             if video_path:
                 log("Instagram: VLM on video frames...")
-                vr = vision.describe_video(video_path, n_frames=3)
+                vr = vision.describe_video(video_path, n_frames=3, gpu=gpu)
                 if vr.get("text"):
                     vis_out["video_frames"] = vr["text"]
             if vis_out:

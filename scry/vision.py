@@ -2,21 +2,25 @@
 
 Qwen3.5-0.8B is a small VLM (Gated DeltaNet + Gated Attention hybrid, vision
 encoder included). It describes the image AND transcribes any on-screen text
-(multilingual) in one CPU-only pass. No torch: inference goes through GGUF
-weights (Q8_0) via the llama-cpp-python mtmd / libmtmd backend. Thinking is
-OFF by default for this 0.8B model, so no extra toggle is needed.
+(multilingual) in one pass. No torch: inference goes through GGUF weights
+(Q8_0) via the llama-cpp-python mtmd / libmtmd backend, on the GPU when the
+installed build supports it (n_gpu_layers=-1, vision encoder included) and
+on CPU otherwise. Thinking is OFF by default for this 0.8B model, so no
+extra toggle is needed.
 
-Optional extra:
-    pip install "scry-social[vision]"
+Inference runs in a worker subprocess (_vlm_worker.py): a GPU crash
+(SIGSEGV) must not take down scry, and a crashed GPU attempt is retried
+once on CPU. Use --cpu (or SCRY_VLM_GPU=0) to skip the GPU attempt.
+
 One-time setup:
-    scry setup --vision    (downloads ~1.1 GB to ~/.cache/scry/models)
+    scry setup --vision    (precompiled llama-cpp-python wheel for your
+                            accelerator + ~1.1 GB model in ~/.cache/scry)
 
 Model: unsloth/Qwen3.5-0.8B-GGUF (Qwen3.5-0.8B-Q8_0 + mmproj-F16).
 """
 from __future__ import annotations
 
 import os
-import time
 from pathlib import Path
 
 from .common import MODELS_DIR, extract_frames, log
@@ -39,10 +43,6 @@ SYSTEM_PROMPT = (
 
 MAX_TOKENS = 512
 
-_llm = None
-_load_error: str | None = None
-
-
 def model_dir() -> Path:
     return MODELS_DIR / "qwen3.5-0.8b"
 
@@ -64,9 +64,7 @@ def setup_vision() -> None:
 
 
 def vision_available() -> bool:
-    """True if the [vision] extra is installed and the model is downloaded."""
-    if _load_error is not None:
-        return False
+    """True if the [vision] deps are installed and the model is downloaded."""
     d = model_dir()
     if not (d / MODEL_FILE).exists() or not (d / MMPROJ_FILE).exists():
         return False
@@ -78,66 +76,73 @@ def vision_available() -> bool:
         return False
 
 
-def _get_llm():
-    """Lazy singleton: load the VLM once per process."""
-    global _llm, _load_error
-    if _llm is None and _load_error is None:
+def _run_vlm(image_path: str, use_gpu: bool) -> dict:
+    """Run one VLM inference in a worker subprocess (see _vlm_worker.py).
+
+    A GPU crash (SIGSEGV) kills only the worker: the exit code is anything
+    other than 0 (success) or 1 (handled error), in which case the same
+    image is retried once on CPU. Handled errors (exit 1) are reported
+    as-is, without a retry.
+    """
+    import json
+    import subprocess
+    import sys
+
+    def spawn(gpu: bool) -> subprocess.CompletedProcess:
+        cmd = [sys.executable, "-m", "scry._vlm_worker", image_path,
+               "--gpu" if gpu else "--cpu"]
         try:
-            from llama_cpp import Llama
-            from llama_cpp.llama_chat_format import MTMDChatHandler
+            return subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=900)
+        except subprocess.TimeoutExpired:
+            log(f"Vision: worker timed out after 900s ({'GPU' if gpu else 'CPU'})")
+            return subprocess.CompletedProcess(cmd, -15, "", "timeout")
 
-            d = model_dir()
-            t0 = time.time()
-            handler = MTMDChatHandler(
-                clip_model_path=str(d / MMPROJ_FILE),
-                verbose=False,
-                use_gpu=False,
-            )
-            _llm = Llama(
-                model_path=str(d / MODEL_FILE),
-                chat_handler=handler,
-                n_ctx=4096,
-                verbose=False,
-            )
-            log(f"Vision: {MODEL_LABEL} loaded in {time.time() - t0:.1f}s")
-        except Exception as e:
-            _load_error = str(e)
-            log(f"Vision: failed to load model: {e}")
-    return _llm
+    cp = spawn(use_gpu)
+    if use_gpu and cp.returncode not in (0, 1):
+        # crash (negative rc on Unix, arbitrary positive on Windows):
+        # neutral message on purpose — the cause may be VRAM pressure, a
+        # driver bug, or a wheel/backend bug; we just try CPU.
+        log(f"Vision: GPU inference failed (exit {cp.returncode}); "
+            "falling back to CPU for this image")
+        cp = spawn(False)
 
-
-def describe_image(image_path: str) -> dict:
-    """Run the VLM on one image -> {"text": ..., "time_s": ...}."""
-    llm = _get_llm()
-    if llm is None:
-        return {"text": "", "time_s": 0.0, "error": _load_error}
-    t0 = time.time()
-    url = "file://" + os.path.abspath(image_path)
-    from llama_cpp._utils import suppress_stdout_stderr
-    with suppress_stdout_stderr(disable=False):
-        resp = llm.create_chat_completion(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": url}},
-                    {"type": "text", "text": "Describe this image."},
-                ]},
-            ],
-            temperature=0.7,
-            top_p=0.80,
-            top_k=20,
-            min_p=0.0,
-            presence_penalty=1.5,
-            max_tokens=MAX_TOKENS,
-        )
-    return {
-        "text": (resp["choices"][0]["message"]["content"] or "").strip(),
-        "time_s": round(time.time() - t0, 1),
-    }
+    line = ""
+    for l in reversed((cp.stdout or "").strip().splitlines()):
+        if l.strip():
+            line = l
+            break
+    try:
+        data = json.loads(line) if line else {}
+    except json.JSONDecodeError:
+        data = {}
+    if cp.returncode != 0:
+        err = data.get("error")
+        if not err:
+            tail = [l for l in (cp.stderr or "").strip().splitlines() if l.strip()]
+            err = tail[-1] if tail else f"worker exited with code {cp.returncode}"
+        return {"text": "", "time_s": 0.0, "error": f"VLM worker failed: {err}"}
+    return {"text": data.get("text", ""), "time_s": data.get("time_s", 0.0)}
 
 
-def describe_video(video_path: str, n_frames: int = 3) -> dict:
-    """Sample frames from a video and describe each (dedup identical text)."""
+def describe_image(image_path: str, gpu: bool | None = None) -> dict:
+    """Run the VLM on one image -> {"text": ..., "time_s": ...}.
+
+    gpu: whether to try the GPU. None = auto (GPU, unless SCRY_VLM_GPU=0);
+    True/False to force — the --cpu CLI flag passes False. A crashed GPU
+    attempt is retried once on CPU automatically.
+    """
+    if gpu is None:
+        gpu = os.environ.get("SCRY_VLM_GPU") != "0"
+    return _run_vlm(image_path, use_gpu=gpu)
+
+
+def describe_video(video_path: str, n_frames: int = 3,
+                   gpu: bool | None = None) -> dict:
+    """Sample frames from a video and describe each (dedup identical text).
+
+    gpu: passed through to describe_image (see its docstring).
+    """
     outdir = os.path.join(os.path.dirname(video_path) or ".", "frames")
     frames = extract_frames(video_path, outdir, n=n_frames)
     if not frames:
@@ -146,7 +151,7 @@ def describe_video(video_path: str, n_frames: int = 3) -> dict:
     items: list[dict] = []
     for i, f in enumerate(frames, 1):
         log(f"Vision: frame {i}/{len(frames)} ...")
-        r = describe_image(f)
+        r = describe_image(f, gpu=gpu)
         items.append({"file": os.path.basename(f), "text": r["text"],
                       "time_s": r["time_s"]})
         if r["text"] and r["text"] not in texts:
