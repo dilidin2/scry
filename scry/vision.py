@@ -167,11 +167,18 @@ def describe_video(video_path: str, n_frames: int = 3,
         return {"text": "", "frames": []}
     texts: list[str] = []
     items: list[dict] = []
+    errors: list[str] = []
     for i, f in enumerate(frames, 1):
         log(f"Vision: frame {i}/{len(frames)} ...")
         r = describe_image(f, gpu=gpu)
         items.append({"file": os.path.basename(f), "text": r["text"],
                       "time_s": r["time_s"]})
+        if r.get("error"):
+            errors.append(r["error"])
         if r["text"] and r["text"] not in texts:
             texts.append(r["text"])
-    return {"text": "\n\n".join(texts), "frames": items}
+    out: dict = {"text": "\n\n".join(texts), "frames": items}
+    if errors:
+        # dedup: all frames failing usually yields the same error
+        out["error"] = "; ".join(dict.fromkeys(errors))
+    return out
