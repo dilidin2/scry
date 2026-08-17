@@ -24,7 +24,7 @@ Common options:
                        the [vision] extra; default: off)
   --no-download        skip media download (metadata+comments only)
   --cookies FILE       Netscape cookies file (for content that requires login)
-  --json               print only the JSON to stdout
+  --json               print only the JSON to stdout (logs go to stderr)
 """
 from __future__ import annotations
 
