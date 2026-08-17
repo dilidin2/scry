@@ -89,6 +89,34 @@ CHROME_UA = (
 IMPERSONATE = os.environ.get("SCRY_IMPERSONATE", "chrome136")
 
 
+def _ytdlp_impersonate(name: str) -> str:
+    """curl_cffi browser name -> yt-dlp --impersonate value.
+
+    curl_cffi: chrome136, safari17_2, chrome131_android, safari_ios
+    yt-dlp:    chrome-136, safari-17.2, chrome-131:android, safari:ios
+    """
+    m = re.fullmatch(r"([a-z]+?)(\d{2,3})(?:_(\d+))?([a-z])?(?:_([a-z]+))?",
+                     name)
+    if not m:
+        # no digits: generic alias (chrome, safari, ...) or os alias
+        aliases = {"safari_ios": "safari:ios", "safari_ios_beta": "safari:ios",
+                   "chrome_android": "chrome:android"}
+        return aliases.get(name, name)
+    client, major, minor, _variant, os_ = m.groups()
+    ver = f"{major}.{minor}" if minor else major
+    if client == "tor" and not minor and len(major) == 3:  # tor145 -> tor-14.5
+        ver = f"{major[:-1]}.{major[-1]}"
+    out = f"{client}-{ver}"
+    return f"{out}:{os_}" if os_ else out
+
+
+# Same client as IMPERSONATE, in yt-dlp's spelling. Override separately with
+# SCRY_IMPERSONATE_YTDLP if a mapping is missing or you want a different
+# target for the yt-dlp fallback (e.g. TikTok CDN vs page fetch).
+YTDLP_IMPERSONATE = (os.environ.get("SCRY_IMPERSONATE_YTDLP")
+                     or _ytdlp_impersonate(IMPERSONATE))
+
+
 # ---------------------------------------------------------------------------
 # Link recognition
 # ---------------------------------------------------------------------------
@@ -146,12 +174,17 @@ def resolve_share_url(session, url: str) -> str | None:
     are dropped in all cases. Returns None only if unresolvable (network
     error or non-TikTok redirect target).
     """
-    try:
-        r = session.get(url, impersonate=IMPERSONATE, allow_redirects=True, timeout=20)
+    def _get():
+        r = session.get(url, impersonate=IMPERSONATE, allow_redirects=True,
+                        timeout=20)
         p = urlparse(str(r.url))
         if "tiktok.com" not in p.netloc.lower():
-            return None
+            raise RuntimeError(f"redirect left tiktok.com: {p.netloc}")
         return f"https://www.tiktok.com{p.path}"
+
+    try:
+        return retry_call(_get, attempts=2, base_delay=2,
+                          what="TikTok: short link")
     except Exception:
         return None
 
@@ -337,3 +370,45 @@ def ts() -> str:
 def log(msg: str) -> None:
     """Progress line -> stderr, so stdout stays clean (--json = JSON only)."""
     print(f"[{ts()}] {msg}", file=sys.stderr, flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Retries (transient failures: network blips, timeouts, 429/5xx)
+# ---------------------------------------------------------------------------
+class TransientError(Exception):
+    """A retryable failure: network blip, timeout, rate limit (429), 5xx."""
+
+
+def _is_network_error(e: BaseException) -> bool:
+    """True for connection-level errors (timeouts, resets, TLS drops)."""
+    if isinstance(e, (TimeoutError, ConnectionError, OSError)):
+        return True
+    mod = type(e).__module__ or ""
+    return mod.startswith(("curl_cffi", "httpx", "urllib3", "socket"))
+
+
+def retry_call(fn, *, attempts: int = 3, base_delay: float = 2.0,
+               what: str = "scry"):
+    """Call fn() up to `attempts` times with linear backoff.
+
+    Retries on TransientError and on connection-level errors (timeouts,
+    resets); any other exception propagates immediately. Returns fn()'s
+    result on the first success; re-raises the last error after all
+    attempts fail.
+    """
+    last: Exception | None = None
+    for i in range(1, attempts + 1):
+        try:
+            return fn()
+        except TransientError as e:
+            last = e
+        except Exception as e:
+            if not _is_network_error(e):
+                raise
+            last = e
+        if i < attempts:
+            delay = base_delay * i
+            log(f"{what}: attempt {i}/{attempts} failed ({last}); "
+                f"retry in {delay:.0f}s")
+            time.sleep(delay)
+    raise last
