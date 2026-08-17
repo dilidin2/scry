@@ -13,6 +13,7 @@ Usage:
   scry setup --all                (both)
   scry skill                      (show the bundled agent skill)
   scry skill --path DIR           (install it into an agent skills directory)
+  scry --version                  (print the version)
 
 Common options:
   --max-comments N     comments to analyze (default 30)
@@ -33,10 +34,13 @@ import json
 import sys
 import time
 
+from . import __version__
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="scry", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--version", action="version", version=f"scry {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("tiktok", "instagram", "auto"):
         sp = sub.add_parser(name, help=f"{name} pipeline")
