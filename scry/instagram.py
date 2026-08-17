@@ -31,8 +31,6 @@ from .consensus import analyze_comments
 PY = sys.executable  # current venv modules (gallery-dl not on global PATH)
 
 ADD_DATA_RE = re.compile(r'window\.__additionalData\s*=\s*(\{.*?\})\s*</script>', re.S)
-XDT_TAG_RE = re.compile(r'<script[^>]*data-content-len="(\d+)"[^>]*>'
-                        r'(\{.*?\})\s*</script>', re.S)
 
 
 # ---------------------------------------------------------------------------
@@ -123,28 +121,25 @@ def parse_xdt_page(html: str, code: str) -> dict | None:
 def extract_media_xdt(obj: dict) -> dict:
     """Normalize the XDT media object to the same shape as extract_media()."""
     urls, kind = [], None
-    media_type = obj.get("media_type")  # 1=image, 2=video, 8/... = carousel?
     carousel = obj.get("carousel_media") or []
-    if obj.get("video_versions"):
-        kind = "video"
-        urls.append(obj["video_versions"][0]["url"])
     if carousel:
         kind = "carousel"
-        urls = []
         for item in carousel:
             if item.get("video_versions"):
                 urls.append(("video", item["video_versions"][0]["url"]))
             elif (item.get("image_versions2") or {}).get("candidates"):
                 urls.append(("image", item["image_versions2"]["candidates"][0]["url"]))
+    elif obj.get("video_versions"):
+        # video post: video_versions is the media. image_versions2 (cover
+        # thumbnail, a JPEG) must not be added as a second "video"
+        kind = "video"
+        urls.append(obj["video_versions"][0]["url"])
     elif (obj.get("image_versions2") or {}).get("candidates"):
-        kind = kind or "image"
+        kind = "image"
         urls.append(obj["image_versions2"]["candidates"][0]["url"])
     elif obj.get("display_url"):
-        kind = kind or "image"
+        kind = "image"
         urls.append(obj["display_url"])
-
-    if kind is None and urls:
-        kind = "video" if obj.get("video_duration") else "image"
 
     caption = (obj.get("caption") or {}).get("text", "") or ""
     stats = {
