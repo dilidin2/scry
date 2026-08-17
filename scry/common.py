@@ -214,9 +214,30 @@ def run_cmd(cmd: list[str], timeout: int = 600, cwd: str | None = None) -> tuple
         return 127, "", str(e)
 
 
+def missing_media_tools() -> list[str]:
+    """ffmpeg/ffprobe binaries missing from PATH (empty list = all present)."""
+    return [b for b in ("ffmpeg", "ffprobe") if shutil.which(b) is None]
+
+
+_warned: set[str] = set()
+
+
+def _media_warn(key: str, msg: str) -> None:
+    """Log a media-tool problem once per (tool, file), not once per call."""
+    if key not in _warned:
+        _warned.add(key)
+        log(msg)
+
+
 def video_duration(path: str) -> float:
-    rc, out, _ = run_cmd(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                          "-of", "default=nw=1:nk=1", path], timeout=30)
+    rc, out, err = run_cmd(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "default=nw=1:nk=1", path], timeout=30)
+    if rc == 127:  # binary not found
+        _media_warn("ffprobe", "ffprobe not found on PATH - install ffmpeg "
+                               "(duration/frames will be unavailable)")
+    elif rc != 0:
+        _media_warn(f"ffprobe:{path}", f"ffprobe failed on {path}: {err.strip()[:200]} "
+                     "(corrupted download or non-video file?)")
     try:
         return float(out.strip())
     except ValueError:
@@ -229,6 +250,12 @@ def extract_audio(video_path: str, wav_path: str) -> bool:
         ["ffmpeg", "-y", "-v", "error", "-i", video_path,
          "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav_path],
         timeout=300)
+    if rc == 127:  # binary not found
+        _media_warn("ffmpeg", "ffmpeg not found on PATH - install ffmpeg "
+                              "(audio extraction will be unavailable)")
+    elif rc != 0:
+        _media_warn(f"ffmpeg:{video_path}",
+                    f"ffmpeg failed on {video_path}: {err.strip()[:200]}")
     return rc == 0 and Path(wav_path).exists()
 
 
@@ -243,11 +270,15 @@ def extract_frames(video_path: str, outdir: str, n: int = 3) -> list[str]:
     for i in range(n):
         t = dur * (i + 1) / (n + 1)
         out = outdir / f"frame_{i+1}.jpg"
-        rc, _, _ = run_cmd(
+        rc, _, err = run_cmd(
             ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", video_path,
              "-frames:v", "1", "-q:v", "3", str(out)], timeout=120)
         if rc == 0 and out.exists():
             frames.append(str(out))
+        elif rc != 0:
+            _media_warn(f"frames:{video_path}",
+                        f"ffmpeg frame extraction failed at {t:.1f}s of {video_path}: "
+                        f"{err.strip()[:200]}")
     return frames
 
 
