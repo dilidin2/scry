@@ -382,7 +382,12 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
                     # comments: popup + DOM
                     if do_comments:
                         if s.open_comments_popup():
-                            dom_comments = s.extract_comments(max_scrolls=2)
+                            # scroll until ~max_comments are in the DOM or the
+                            # list is exhausted (extract_comments stops early)
+                            max_scrolls = max(2, min(10, max_comments // 10))
+                            dom_comments = s.extract_comments(
+                                max_scrolls=max_scrolls,
+                                min_comments=max_comments)
                             media["comments"] = [
                                 {"username": c["username"], "text": c["text"],
                                  "likes": c["likes"], "replies": 0,
@@ -542,8 +547,9 @@ def render(r: dict) -> str:
 
     t = r.get("transcript")
     if t and t.get("text"):
+        load = f" (+{t['model_load_s']}s model load)" if (t.get("model_load_s") or 0) >= 1 else ""
         L.append(f"\n## Transcript (STT {t.get('model')}, lang={t.get('language')}, "
-                 f"{t.get('realtime_factor', '?')}x realtime)\n\n{t['text']}")
+                 f"{t.get('realtime_factor', '?')}x realtime{load})\n\n{t['text']}")
     elif t and t.get("error"):
         L.append(f"\n## Transcript\n\n_ERROR: {t['error']}_")
 

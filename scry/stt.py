@@ -42,6 +42,7 @@ def transcribe(wav_path: str, model: str = "small", language: str | None = None,
 
     t0 = time.time()
     m = get_model(model)
+    t_load = time.time() - t0  # model load (first call per process); kept out of the realtime factor
     segments, info = m.transcribe(
         wav_path,
         language=language,          # None = auto-detect
@@ -54,7 +55,7 @@ def transcribe(wav_path: str, model: str = "small", language: str | None = None,
         print(f"  [{s.start:6.1f}-{s.end:6.1f}] {s.text.strip()}", file=sys.stderr, flush=True)
     text = " ".join(s["text"] for s in segs).strip()
     dur = video_duration(wav_path)
-    took = time.time() - t0
+    took = time.time() - t0 - t_load  # transcription only, excludes model load
     return {
         "text": text,
         "language": info.language,
@@ -62,6 +63,7 @@ def transcribe(wav_path: str, model: str = "small", language: str | None = None,
         "audio_duration_s": round(dur, 1),
         "processing_time_s": round(took, 1),
         "realtime_factor": round(dur / took, 1) if took > 0 else None,
+        "model_load_s": round(t_load, 1),
         "model": model,
         "segments": segs,
     }
