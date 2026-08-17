@@ -1,6 +1,6 @@
 ---
 name: scry
-description: Scrape TikTok videos and Instagram posts (videos, reels, photos, carousels) and turn them into LLM-readable intel (STT transcripts, captions, stats) plus top comments with a community consensus/reliability score. The output lists local media file paths, so a vision-capable model can inspect the media directly with its own vision; an optional local VLM analysis (the -v flag, needs the [vision] extra) describes images and transcribes on-screen text for models without vision. Use this skill whenever the user shares a TikTok or Instagram link and wants to know what is in it, what it says, or what people think about it, or asks to watch a TikTok or IG post, transcribe a reel, read the comments, or check if a claim is supported by the community. Everything runs CPU-only (no GPU; a lightweight browser is only launched for Instagram when the fast path fails).
+description: Scrape TikTok videos and Instagram posts (videos, reels, photos, carousels) and turn them into LLM-readable intel (STT transcripts, captions, stats) plus top comments with a community consensus/reliability score. The output lists local media file paths, so a vision-capable model can inspect the media directly with its own vision; an optional local VLM analysis (the -v flag, needs the [vision] extra) describes images and transcribes on-screen text for models without vision. Use this skill whenever the user shares a TikTok or Instagram link and wants to know what is in it, what it says, or what people think about it, or asks to watch a TikTok or IG post, transcribe a reel, read the comments, or check if a claim is supported by the community. STT and scraping run CPU-only; the local VLM runs on your GPU when available (CPU otherwise). A lightweight browser is only launched for Instagram when the fast path fails.
 license: MIT
 ---
 
@@ -11,7 +11,9 @@ audio (STT), collect metadata and top comments with a consensus/reliability
 score, and save the media locally (file paths are listed in the output).
 Optionally (`-v` flag + `[vision]` extra) a small local VLM describes the
 images and reads the on-screen text — for models that have no vision of
-their own. Everything CPU-only (no GPU).
+their own. The VLM runs on your GPU when the installed build supports it
+(CPU otherwise); a crashed GPU attempt retries the image on CPU
+automatically, and `--cpu` skips the GPU attempt.
 
 **Scraping tiers** (lightest to heaviest):
 - **TikTok**: curl_cffi (TLS impersonation) → page with embedded JSON →
@@ -73,6 +75,7 @@ scry tiktok "<url>" --no-download --no-stt
 #   --language it       force the STT language (default auto-detect)
 #   -v, --vision        local-VLM visual analysis (instagram; needs the
 #                       [vision] extra; default: off)
+#   --cpu               with -v: run the VLM on CPU (skip the GPU attempt)
 #   --no-download       skip download+STT
 #   --cookies FILE      Netscape cookies for content that requires login
 #   --json              stdout only JSON (for further processing)
@@ -89,7 +92,8 @@ section.
   than the local 0.8B one.
 - Use `-v` when the model handling the output has **no vision** and the
   post is visually driven (text over video, on-screen claims/numbers,
-  photo carousels). Cost: slow CPU inference (~1 min per 3 frames).
+  photo carousels). Cost: a few seconds per frame on a GPU, ~1 min per
+  3 frames on CPU (GPU is tried first; `--cpu` forces CPU).
 - Note: TikTok vision is planned but not implemented yet — `-v` on TikTok
   is ignored (with a note in the log).
 

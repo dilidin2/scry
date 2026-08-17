@@ -8,9 +8,11 @@ Visual understanding by a small local VLM (image description + on-screen
 text) is an **optional extra** (`[vision]`, `-v` flag) for agents and
 models without their own vision.
 
-Everything runs **CPU-only** (no GPU). A lightweight anti-detect browser
-(Camoufox) is launched *only* for Instagram when the fast HTTP path is
-not enough.
+STT and scraping run CPU-only; the optional VLM runs on your **GPU when
+the installed build supports it** (CPU otherwise — and a failed GPU
+attempt falls back to CPU automatically). A lightweight anti-detect
+browser (Camoufox) is launched *only* for Instagram when the fast HTTP
+path is not enough.
 
 > **Personal-use tool.** This project is for occasional, personal
 > research on a few links at a time — not for mass scraping, not for
@@ -56,7 +58,10 @@ not strictly required. Equivalently, `pip install "scry-social[vision]"` (or
 front — note that plain pip compiles the CPU build from source, and
 `scry setup --vision` then replaces it with the precompiled wheel if you
 have a supported GPU. In the pipeline the VLM is opt-in too: without `-v`
-no VLM runs.
+no VLM runs. With `-v` it tries the GPU first (all layers offloaded,
+`n_gpu_layers=-1`) and, if the GPU attempt crashes (e.g. not enough free
+VRAM), retries the image on CPU automatically; `--cpu` (or `SCRY_VLM_GPU=0`)
+skips the GPU attempt entirely.
 
 From source: `git clone <this-repo> && cd scry && pip install -e .`
 (add `[vision]` if you want the VLM).

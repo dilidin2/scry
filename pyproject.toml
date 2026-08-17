@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "scry-social"
 version = "0.1.0"
-description = "Let an LLM see TikTok and Instagram: CPU-only pipeline for transcripts, visual understanding, metadata, and comment consensus."
+description = "Let an LLM see TikTok and Instagram: local pipeline for transcripts, visual understanding, metadata, and comment consensus."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
