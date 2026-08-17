@@ -309,7 +309,7 @@ def process(url: str, *, do_stt: bool = True, do_comments: bool = True,
         return {"error": f"Unrecognized TikTok URL: {url}"}, "Error: invalid URL"
 
     session = make_session()
-    ck = cookies or str(default_cookies("tiktok"))
+    ck = cookies or default_cookies("tiktok")
     if ck and Path(ck).exists():
         n = add_netscape_cookies(session, ck)
         log(f"TikTok: {n} cookies loaded from {ck}")

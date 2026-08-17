@@ -331,7 +331,7 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
         return {"error": f"Unrecognized Instagram URL: {url}"}, "Error: invalid URL"
 
     session = make_session()
-    ck = cookies or str(default_cookies("instagram"))
+    ck = cookies or default_cookies("instagram")
     if ck and Path(ck).exists():
         n = add_netscape_cookies(session, ck)
         log(f"Instagram: {n} cookies loaded from {ck}")
