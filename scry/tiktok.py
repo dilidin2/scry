@@ -468,17 +468,15 @@ def render(r: dict) -> str:
 
     co = r.get("consensus") or {}
     if co.get("available"):
-        L.append("\n## Comment consensus (heuristic)")
-        L.append(f"- {co['agree']} agree / {co['disagree']} disagree / "
-                 f"{co['neutral']} neutral out of {co['total_analyzed']} analyzed")
-        if co.get("agreement_ratio") is not None:
-            L.append(f"- Agreement ratio among those with a clear opinion: "
-                     f"**{co['agreement_ratio']:.0%}**")
+        rel = co.get("reliability") or {}
+        L.append("\n## Comment consensus (likes-based)")
+        L.append(f"- Reliability: {rel.get('high', 0)} high / {rel.get('medium', 0)} medium / "
+                 f"{rel.get('low', 0)} low out of {co['total_analyzed']} analyzed")
         sig = [x for x in co["comments"][:15] if x["reliability"] in ("high", "medium")]
         if sig:
             L.append("- Comments most 'validated' by the community:")
             for x in sig[:5]:
-                L.append(f"  - @{x['username']} ({fmt(x['likes'])} likes, {x['stance']}): "
+                L.append(f"  - @{x['username']} ({fmt(x['likes'])} likes): "
                          f"{x['text'][:120]}")
         L.append(f"\n> Note: {co['note']}")
     return "\n".join(L)
