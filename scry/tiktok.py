@@ -21,10 +21,10 @@ import time
 from pathlib import Path
 
 from .common import (
-    DOWNLOADS_DIR, IMPERSONATE, add_netscape_cookies, classify_url,
-    default_cookies, extract_audio, extract_frames, fmt, fmt_ts, log,
-    make_session, resolve_share_url, run_cmd, save_outputs, slug,
-    video_duration,
+    DOWNLOADS_DIR, IMPERSONATE, YTDLP_IMPERSONATE, TransientError,
+    add_netscape_cookies, classify_url, default_cookies, extract_audio,
+    extract_frames, fmt, fmt_ts, log, make_session, retry_call,
+    resolve_share_url, run_cmd, video_duration,
 )
 from .consensus import analyze_comments
 
@@ -40,11 +40,20 @@ REHYDRATION_RE = re.compile(
 # Fetch + parse
 # ---------------------------------------------------------------------------
 def fetch_page(session, url: str) -> tuple[str, int] | None:
-    """GET the video page. Bootstraps ttwid if missing. Returns (html, status) or None."""
-    try:
+    """GET the video page (3 attempts, backoff). Bootstraps ttwid if
+    missing. Returns (html, status) or None."""
+    def _get():
         if "ttwid" not in session.cookies:
-            session.get("https://www.tiktok.com/", impersonate=IMPERSONATE, timeout=20)
+            session.get("https://www.tiktok.com/", impersonate=IMPERSONATE,
+                        timeout=20)
         r = session.get(url, impersonate=IMPERSONATE, timeout=30)
+        if r.status_code in (429, 500, 502, 503, 504):
+            raise TransientError(f"HTTP {r.status_code}")
+        return r
+
+    try:
+        r = retry_call(_get, attempts=3, base_delay=2,
+                       what="TikTok: page fetch")
         return r.text, r.status_code
     except Exception as e:
         log(f"TikTok: page fetch error: {e}")
@@ -189,10 +198,16 @@ def fetch_comments_api(session, video_id: str, page_html: str,
             params["msToken"] = ms_token
         qs = "&".join(f"{k}={v}" for k, v in params.items())
         url = f"https://www.tiktok.com/api/comment/list/?{qs}"
-        try:
+        def _api_get():
             r = session.get(url, impersonate=IMPERSONATE, timeout=20,
                             headers={"referer": f"https://www.tiktok.com/video/{video_id}"})
-            data = r.json()
+            if r.status_code in (429, 500, 502, 503, 504):
+                raise TransientError(f"HTTP {r.status_code}")
+            return r
+
+        try:
+            data = retry_call(_api_get, attempts=3, base_delay=2,
+                              what=f"TikTok: comment API page {page_no+1}").json()
         except Exception as e:
             return all_comments, f"API error page {page_no+1}: {e}"
         comments = data.get("comments") or []
@@ -230,25 +245,34 @@ def _download_direct(session, gears: list[tuple[int, str, str]], outdir: Path,
     dest = outdir / f"{video_id}.mp4"
     errors = []
     for size, label, url in gears:
-        try:
+        def _one():
             t0 = time.time()
             with session.stream("GET", url, impersonate=IMPERSONATE, timeout=180,
                                 headers={"referer": "https://www.tiktok.com/"}) as rr:
+                if rr.status_code in (429, 500, 502, 503, 504):
+                    raise TransientError(f"HTTP {rr.status_code}")
                 if rr.status_code != 200:
-                    errors.append(f"{label}: HTTP {rr.status_code}")
-                    continue
+                    raise RuntimeError(f"HTTP {rr.status_code}")
                 n = 0
                 with open(dest, "wb") as f:
                     for chunk in rr.iter_content(chunk_size=256 * 1024):
                         f.write(chunk)
                         n += len(chunk)
-            if n > 100_000:  # sanity: no HTML responses / empty blobs
-                return str(dest), (f"direct {label} {n/1e6:.1f}MB "
-                                   f"in {time.time()-t0:.0f}s")
-            errors.append(f"{label}: response too small ({n} B)")
+            if n <= 100_000:  # sanity: no HTML responses / empty blobs
+                raise TransientError(f"response too small ({n} B)")
+            return n, t0
+
+        try:
+            n, t0 = retry_call(_one, attempts=2, base_delay=2,
+                               what=f"TikTok: CDN {label}")
+            return str(dest), (f"direct {label} {n/1e6:.1f}MB "
+                               f"in {time.time()-t0:.0f}s")
         except Exception as e:
             errors.append(f"{label}: {e}")
             log(f"TikTok: direct download {label} failed: {e}")
+    # don't leave a partial file behind if every gear failed
+    if dest.exists():
+        dest.unlink(missing_ok=True)
     return None, "; ".join(errors) or "no gear available"
 
 
@@ -257,7 +281,7 @@ def _download_ytdlp(url: str, outdir: Path, cookies: str | None,
     """Fallback: yt-dlp with impersonation + cookies."""
     outdir.mkdir(parents=True, exist_ok=True)
     out_tmpl = str(outdir / "%(id)s.%(ext)s")
-    cmd = [PY, "-m", "yt_dlp", "--impersonate", "chrome-136",
+    cmd = [PY, "-m", "yt_dlp", "--impersonate", YTDLP_IMPERSONATE,
            "-f", "bv*+ba/b", "--merge-output-format", "mp4",
            "--no-playlist",
            "-o", out_tmpl, "--socket-timeout", "30"]
@@ -412,7 +436,9 @@ def process(url: str, *, do_stt: bool = True, do_comments: bool = True,
     else:
         result["comments"], result["consensus"] = [], {"available": False}
 
-    result["files"] = {"video": str(outdir)}
+    # "dir" (same key as Instagram): the video lives in the run dir, its
+    # exact name is <video_id>.mp4.
+    result["files"] = {"dir": str(outdir)}
     return result, render(result)
 
 
