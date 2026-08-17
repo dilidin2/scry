@@ -4,25 +4,31 @@ When curl_cffi is not enough (JS checkpoints, challenges, walls), we open a
 real browser with a consistent fingerprint + the user's cookies. Same
 behavior as a human user: same session, same profile.
 
-Typical use (sporadic, few calls):
-    html, final_url = fetch_page("https://www.instagram.com/reel/xxx/",
-                                 "instagram_cookies.txt")
+Pipeline usage:
+    - Session: reusable context for Instagram tier 2 (page + comments popup)
+    - download_url: one-shot download via a browser request context
+      (CDN fallback for Instagram media)
+
+Standalone debug helpers (NOT used by the pipeline, kept for ad-hoc work):
+    html, final_url, cookies = fetch_page("https://www.instagram.com/reel/xxx/",
+                                          "instagram_cookies.txt")
+    fetch_and_save_page(url, "instagram_cookies.txt", Path("debug.html"))
 
 Notes:
 - headless=False (default): visible window, maximum anti-detect
   compatibility. Fine on a desktop PC for sporadic use.
-- geoip=True: Camoufox aligns timezone/locale with the IP (consistency).
+- geoip=True: Camoufox aligns WebRTC IP, timezone and locale with the IP
+  geolocation, so the fingerprint is consistent with the network location.
+  The locale/timezone parameters default to None (let geoip decide); pass
+  them explicitly only to force a specific value.
 - uBlock Origin included by default (reduces tracking noise).
 """
 from __future__ import annotations
 
-import json
 import re
-import sys
-import time
 from pathlib import Path
 
-from .common import log
+from .common import TransientError, log, retry_call
 
 # ---------------------------------------------------------------------------
 # Cookies: Netscape -> Playwright format
@@ -61,10 +67,13 @@ class Session:
             html, url = s.open(post_url)
             comments = s.open_comments_popup() + s.extract_comments()
             s.download(media_url, dest)
+
+    locale/timezone default to None so Camoufox (geoip=True) derives them
+    from the IP geolocation; pass them explicitly to force a value.
     """
     def __init__(self, cookies_path: str | Path | None = None, *,
-                 headless: bool = False, locale: str = "it-IT",
-                 timezone: str = "Europe/Rome"):
+                 headless: bool = False, locale: str | None = None,
+                 timezone: str | None = None):
         self.cookies_path = cookies_path
         self.headless = headless
         self.locale = locale
@@ -77,8 +86,12 @@ class Session:
         from camoufox.sync_api import Camoufox
         self._browser = Camoufox(headless=self.headless, geoip=True)
         browser = self._browser.__enter__()
-        self.ctx = browser.new_context(locale=self.locale,
-                                       timezone_id=self.timezone)
+        ctx_kwargs = {}
+        if self.locale:
+            ctx_kwargs["locale"] = self.locale
+        if self.timezone:
+            ctx_kwargs["timezone_id"] = self.timezone
+        self.ctx = browser.new_context(**ctx_kwargs)
         if self.cookies_path and Path(self.cookies_path).exists():
             cookies = netscape_to_playwright(self.cookies_path)
             self.ctx.add_cookies(cookies)
@@ -109,8 +122,11 @@ class Session:
                     page.wait_for_timeout(6000)
                 except Exception as e:
                     log(f"Browser: home warmup failed ({e}); continuing")
-        page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(wait_ms)
+        def _goto():
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(wait_ms)
+
+        retry_call(_goto, attempts=2, base_delay=3, what="Browser: page load")
         return page.content(), page.url
 
     # -- comments (popup) --------------------------------------------------------
@@ -199,13 +215,20 @@ class Session:
         dest.parent.mkdir(parents=True, exist_ok=True)
         if referer:
             self.ctx.set_extra_http_headers({"referer": referer})
-        try:
+        def _get():
             resp = self.ctx.request.get(url, timeout=180_000)
             if not resp.ok:
-                return False, f"HTTP {resp.status}"
+                if resp.status in (429, 500, 502, 503, 504):
+                    raise TransientError(f"HTTP {resp.status}")
+                raise RuntimeError(f"HTTP {resp.status}")
             body = resp.body()
             if len(body) < 10_000:
-                return False, f"response too small ({len(body)} B)"
+                raise TransientError(f"response too small ({len(body)} B)")
+            return body
+
+        try:
+            body = retry_call(_get, attempts=2, base_delay=3,
+                              what="Browser: download")
             dest.write_bytes(body)
             return True, f"ok {len(body)/1e6:.1f}MB"
         except Exception as e:
@@ -325,18 +348,28 @@ SCROLL_COMMENTS_JS = r"""
 
 def fetch_page(url: str, cookies_path: str | Path | None = None, *,
                headless: bool = False, wait_ms: int = 8000,
-               warmup: bool = True, locale: str = "it-IT",
-               timezone: str = "Europe/Rome") -> tuple[str, str, list[dict]]:
-    """Open `url` with Camoufox + cookies. Returns (html, final_url, cookies).
+               warmup: bool = True, locale: str | None = None,
+               timezone: str | None = None) -> tuple[str, str, list[dict]]:
+    """Standalone one-shot fetch (debug helper; the pipeline does not use
+    it). Opens `url` with Camoufox + cookies.
+    Returns (html, final_url, cookies).
 
     warmup: first visits the same host's home page (the site generates
     session cookies like ig_shield before serving real data).
+
+    locale/timezone default to None so Camoufox (geoip=True) derives them
+    from the IP geolocation; pass them explicitly to force a value.
     """
     from camoufox.sync_api import Camoufox
 
     kwargs = {"headless": headless, "geoip": True}
     with Camoufox(**kwargs) as browser:
-        ctx = browser.new_context(locale=locale, timezone_id=timezone)
+        ctx_kwargs = {}
+        if locale:
+            ctx_kwargs["locale"] = locale
+        if timezone:
+            ctx_kwargs["timezone_id"] = timezone
+        ctx = browser.new_context(**ctx_kwargs)
         if cookies_path and Path(cookies_path).exists():
             cookies = netscape_to_playwright(cookies_path)
             ctx.add_cookies(cookies)
@@ -363,7 +396,8 @@ def fetch_page(url: str, cookies_path: str | Path | None = None, *,
 
 def fetch_and_save_page(url: str, cookies_path: str | Path | None, out_html: Path,
                         **kwargs) -> tuple[str, str]:
-    """fetch_page + save raw HTML to disk (for debug/re-analysis)."""
+    """fetch_page + save raw HTML to disk (debug/re-analysis helper; the
+    pipeline does not use it)."""
     html, final_url, _ = fetch_page(url, cookies_path, **kwargs)
     out_html = Path(out_html)
     out_html.parent.mkdir(parents=True, exist_ok=True)
@@ -386,20 +420,31 @@ def download_url(url: str, dest: str | Path, *, cookies_path: str | Path | None,
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     with Camoufox(headless=headless, geoip=True) as browser:
-        ctx = browser.new_context(locale="it-IT", timezone_id="Europe/Rome")
+        # no explicit locale/timezone: geoip=True aligns them with the IP
+        ctx = browser.new_context()
         if cookies_path and Path(cookies_path).exists():
             ctx.add_cookies(netscape_to_playwright(cookies_path))
         if referer:
             ctx.set_extra_http_headers({"referer": referer})
         req = ctx.request
-        try:
+
+        def _get():
             resp = req.get(url, timeout=timeout_ms)
             if not resp.ok:
-                return False, f"HTTP {resp.status}"
+                if resp.status in (429, 500, 502, 503, 504):
+                    raise TransientError(f"HTTP {resp.status}")
+                raise RuntimeError(f"HTTP {resp.status}")
             body = resp.body()
             if len(body) < 10_000:
-                return False, f"response too small ({len(body)} B)"
+                raise TransientError(f"response too small ({len(body)} B)")
+            return body
+
+        try:
+            body = retry_call(_get, attempts=2, base_delay=3,
+                              what="Browser: download")
             dest.write_bytes(body)
             return True, f"ok {len(body)/1e6:.1f}MB"
+        except Exception as e:
+            return False, f"error: {str(e)[:120]}"
         finally:
             req.dispose()
