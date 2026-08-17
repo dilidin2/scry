@@ -260,11 +260,20 @@ def slug(*parts) -> str:
 
 
 def save_outputs(name: str, markdown: str, data: dict) -> dict[str, str]:
-    """Save markdown + json outputs to OUTPUT_DIR, return the paths."""
+    """Save markdown + json outputs to OUTPUT_DIR, return the paths.
+
+    Same-second reruns of the same name get a -2, -3, ... suffix
+    instead of overwriting the previous run.
+    """
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    base = OUTPUT_DIR / f"{ts}-{slug(name)}"
-    md_path = Path(str(base) + ".md")
-    json_path = Path(str(base) + ".json")
+    s = slug(name)
+    base = OUTPUT_DIR / f"{ts}-{s}"
+    n = 2
+    while base.with_suffix(".md").exists():
+        base = OUTPUT_DIR / f"{ts}-{s}-{n}"
+        n += 1
+    md_path = base.with_suffix(".md")
+    json_path = base.with_suffix(".json")
     md_path.write_text(markdown, encoding="utf-8")
     json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"markdown": str(md_path), "json": str(json_path)}

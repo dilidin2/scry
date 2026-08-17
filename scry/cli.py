@@ -187,8 +187,8 @@ def main() -> int:
         result, md = process(args.url, **kwargs)
 
     from .common import save_outputs, data_note
-    paths = save_outputs(f"{platform}-{result.get('id') or result.get('shortcode')}",
-                         md, result)
+    key = result.get('id') or result.get('shortcode') or 'error'
+    paths = save_outputs(f"{platform}-{key}", md, result)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
