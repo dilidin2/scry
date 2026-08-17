@@ -22,9 +22,9 @@ import time
 from pathlib import Path
 
 from .common import (
-    DOWNLOADS_DIR, IMPERSONATE, add_netscape_cookies, classify_url,
-    default_cookies, extract_audio, extract_frames, fmt, fmt_ts, log,
-    make_session, run_cmd, video_duration,
+    DOWNLOADS_DIR, IMPERSONATE, TransientError, add_netscape_cookies,
+    classify_url, default_cookies, extract_audio, extract_frames, fmt,
+    fmt_ts, log, make_session, retry_call, run_cmd, video_duration,
 )
 from .consensus import analyze_comments
 
@@ -37,16 +37,24 @@ ADD_DATA_RE = re.compile(r'window\.__additionalData\s*=\s*(\{.*?\})\s*</script>'
 # Fetch + parse
 # ---------------------------------------------------------------------------
 def fetch_page(session, url: str) -> str | None:
-    try:
+    """GET the post page (3 attempts, backoff). Returns HTML or None."""
+    def _get():
         r = session.get(url, impersonate=IMPERSONATE, timeout=30,
                         headers={"accept-language": "en-US,en;q=0.9"})
-        if r.status_code == 200:
-            return r.text
-        log(f"Instagram: page HTTP {r.status_code}")
-        return None
+        if r.status_code in (429, 500, 502, 503, 504):
+            raise TransientError(f"HTTP {r.status_code}")
+        return r
+
+    try:
+        r = retry_call(_get, attempts=3, base_delay=2,
+                       what="Instagram: page fetch")
     except Exception as e:
         log(f"Instagram: fetch error: {e}")
         return None
+    if r.status_code == 200:
+        return r.text
+    log(f"Instagram: page HTTP {r.status_code}")
+    return None
 
 
 def _find_media_object(obj, code: str):
@@ -246,11 +254,27 @@ def og_meta(html: str) -> dict:
 # Download
 # ---------------------------------------------------------------------------
 def _download_url(session, url: str, dest: Path) -> bool:
-    try:
+    """Direct media download (2 attempts, backoff)."""
+    def _one():
         with session.stream(url, impersonate=IMPERSONATE, timeout=60) as r:
-            dest.write_bytes(r.content)
-        return dest.exists() and dest.stat().st_size > 0
-    except Exception:
+            if r.status_code in (429, 500, 502, 503, 504):
+                raise TransientError(f"HTTP {r.status_code}")
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code}")
+            data = r.content
+        if not data:
+            raise TransientError("empty response")
+        dest.write_bytes(data)
+        return True
+
+    try:
+        retry_call(_one, attempts=2, base_delay=2,
+                   what=f"Instagram: media {url[:50]}")
+        return True
+    except Exception as e:
+        log(f"Instagram: download failed ({e}): {url[:60]}")
+        if dest.exists():
+            dest.unlink(missing_ok=True)
         return False
 
 
