@@ -42,9 +42,10 @@ scry setup --vision               # installs the precompiled llama-cpp-python
 scry setup --vision --backend rocm  # force a backend (auto|cuda|rocm|metal|cpu)
 ```
 
-External dependencies: system `ffmpeg`/`ffprobe`. A C compiler is needed
-only for `--backend cpu` (llama-cpp-python built from source); on supported
-GPUs `scry setup --vision` downloads a precompiled wheel instead. Models
+External dependencies: system `ffmpeg`/`ffprobe`. A C compiler is optional:
+it is only used by `--backend cpu` to build a tuned llama-cpp-python from
+source; without one `scry setup --vision` falls back to a prebuilt basic-CPU
+wheel, and on supported GPUs it downloads a precompiled wheel instead. Models
 (whisper ~600MB, VLM ~1.1GB) are cached in `~/.cache/scry/models/`.
 
 ## Commands

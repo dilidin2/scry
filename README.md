@@ -48,9 +48,10 @@ no C compiler needed. Force a backend with `--backend`:
 ```bash
 scry setup --vision --backend rocm   # force ROCm (also: cuda, metal, cpu)
 ```
-The CPU backend builds llama-cpp-python from source and needs a C compiler
-(`build-essential`); if the source build fails it falls back to a prebuilt
-basic-CPU wheel. Equivalently, `pip install "scry-social[vision]"` (or
+The CPU backend builds llama-cpp-python from source (tuned for the machine;
+needs a C compiler, `build-essential`); if no compiler is present it
+automatically falls back to a prebuilt basic-CPU wheel, so a compiler is
+not strictly required. Equivalently, `pip install "scry-social[vision]"` (or
 `uv tool install "scry-social[vision]"`) installs the vision dependencies up
 front — note that plain pip compiles the CPU build from source, and
 `scry setup --vision` then replaces it with the precompiled wheel if you
