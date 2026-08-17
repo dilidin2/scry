@@ -188,6 +188,8 @@ def extract_media(obj: dict) -> dict:
         kind = "video" if obj.get("video_duration") else "image"
 
     caption = (obj.get("caption") or {}).get("text", "").strip()
+    user = (obj.get("user") or {}).get("username")
+    location = (obj.get("location") or {}).get("name")
     likes = obj.get("like_count")
     if likes is None:
         likes = (obj.get("edge_liked_by") or {}).get("count")
@@ -219,6 +221,8 @@ def extract_media(obj: dict) -> dict:
                         or obj.get("comment_count"),
         },
         "taken_at": fmt_ts(obj.get("taken_at_timestamp")),
+        "author": user,
+        "location": location,
         "comments": comments,
         "media_urls": media_urls,
     }
@@ -408,6 +412,9 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
         "type": media["type"], "caption": media["caption"],
         "stats": media["stats"], "taken_at": media["taken_at"],
     }
+    for k in ("author", "location"):  # known from the GQL/XDT tiers
+        if media.get(k):
+            result["metadata"][k] = media[k]
 
     # ---- Media download ----------------------------------------------------
     if do_download:
@@ -503,10 +510,15 @@ def render(r: dict) -> str:
 
     m = r.get("metadata") or {}
     st = m.get("stats") or {}
-    L.append(f"# Instagram ({m.get('type', '?')})")
+    if m.get("author"):
+        L.append(f"# Instagram: @{m['author']} ({m.get('type', '?')})")
+    else:
+        L.append(f"# Instagram ({m.get('type', '?')})")
     L.append(f"\n- URL: {r['url']}")
     if m.get("taken_at"):
         L.append(f"- Date: {m['taken_at']}")
+    if m.get("location"):
+        L.append(f"- Location: {m['location']}")
     if st:
         parts = [f"**{fmt(st.get('likes'))} likes**"]
         if st.get("comments"):

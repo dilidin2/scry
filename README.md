@@ -136,7 +136,7 @@ from TikTok's share button — the bare `/video/<id>` URL may 404.
 
 For one URL you get a Markdown report (plus raw JSON) with:
 
-1. **Header** — URL, ID, date, stats (plays/likes/comments/shares)
+1. **Header** — author, URL, ID, date, stats (plays/likes/comments/shares)
 2. **Caption** — the author's original text
 3. **Transcript (STT)** — what is said in the video, with timestamps
 4. **Visual (VLM)** *(only with `-v`)* — concise description of each
