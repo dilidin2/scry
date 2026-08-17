@@ -36,13 +36,16 @@ Optional local VLM — only if the model consuming the output has **no
 vision of its own** (if it does, prefer passing the Media files to it):
 
 ```bash
-uv tool install "scry-social[vision]"    # or: pip install "scry-social[vision]"
-scry setup --vision                       # Qwen3.5-0.8B Q8_0 (~1.1GB)
+scry setup --vision               # installs the precompiled llama-cpp-python
+                                  # wheel for your accelerator (CUDA/ROCm/Metal,
+                                  # or CPU) + Qwen3.5-0.8B Q8_0 (~1.1GB)
+scry setup --vision --backend rocm  # force a backend (auto|cuda|rocm|metal|cpu)
 ```
 
-External dependencies: system `ffmpeg`/`ffprobe`; a C compiler is needed
-only for the `[vision]` extra (llama-cpp-python compiles ggml from source).
-Models (whisper ~600MB, VLM ~1.1GB) are cached in `~/.cache/scry/models/`.
+External dependencies: system `ffmpeg`/`ffprobe`. A C compiler is needed
+only for `--backend cpu` (llama-cpp-python built from source); on supported
+GPUs `scry setup --vision` downloads a precompiled wheel instead. Models
+(whisper ~600MB, VLM ~1.1GB) are cached in `~/.cache/scry/models/`.
 
 ## Commands
 

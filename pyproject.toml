@@ -34,7 +34,12 @@ dependencies = [
 # VLM (Qwen3.5-0.8B GGUF) via llama.cpp: describes images and reads on-screen
 # text. Opt-in in the pipeline too (-v flag): base install and default run
 # are STT-only.
-# llama-cpp-python compiles ggml from source at install time (needs a C compiler).
+# llama-cpp-python normally comes from `scry setup --vision`, which downloads
+# the precompiled wheel for your accelerator (CUDA/ROCm/Metal, or CPU) from
+# the upstream wheel index — pip extras can't select an index, so the wheel
+# choice can't live here. A plain `pip install` of this extra compiles the
+# CPU build from source instead (needs a C compiler); `scry setup --vision`
+# replaces it with the precompiled wheel when you have one.
 vision = [
     "llama-cpp-python>=0.3.30",
     "huggingface-hub>=0.24",

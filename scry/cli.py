@@ -5,7 +5,11 @@ Usage:
   scry instagram <url> [options]
   scry auto <url> [options]       (detects the platform automatically)
   scry setup                      (one-time: downloads the Camoufox browser)
-  scry setup -v                   (one-time: downloads the vision model, ~1.1GB)
+  scry setup -v                   (one-time: vision stack — installs the
+                                   matching precompiled llama-cpp-python wheel
+                                   (CUDA/ROCm/Metal, or CPU) + Qwen3.5-0.8B
+                                   model, ~1.1GB)
+  scry setup -v --backend NAME    (auto|cuda|rocm|metal|cpu, default auto)
   scry setup --all                (both)
   scry skill                      (show the bundled agent skill)
   scry skill --path DIR           (install it into an agent skills directory)
@@ -46,11 +50,19 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="browser without a window (more detectable, only if needed)")
     sp = sub.add_parser("setup",
-                        help="one-time setup: download the Camoufox browser")
+                        help="one-time setup: download the Camoufox browser "
+                             "and/or the vision stack")
     sp.add_argument("-v", "--vision", action="store_true",
-                    help="download the vision model (Qwen3.5-0.8B Q8_0, ~1.1GB)")
+                    help="install the vision stack: llama-cpp-python wheel for "
+                         "your GPU (precompiled; no C compiler needed) + the "
+                         "Qwen3.5-0.8B Q8_0 model (~1.1GB)")
     sp.add_argument("--all", action="store_true",
                     help="download both browser and vision model")
+    sp.add_argument("--backend", default="auto",
+                    choices=["auto", "cuda", "rocm", "metal", "cpu"],
+                    help="which llama-cpp-python build for --vision: auto "
+                         "(detect), cuda, rocm, metal, or cpu (build from "
+                         "source; needs a C compiler) (default: auto)")
     sp = sub.add_parser("skill",
                         help="show or install the agent skill (SKILL.md)")
     sp.add_argument("--path", default=None,
@@ -120,14 +132,17 @@ def main() -> int:
                 rc = 1
             log(f"Setup: browser done in {time.time()-t0:.0f}s")
         if want_vision:
+            t0 = time.time()
             try:
+                from . import gpu
+                gpu.setup_runtime(backend=args.backend)
                 from .vision import setup_vision
-                t0 = time.time()
                 setup_vision()
-                log(f"Setup: vision model done in {time.time()-t0:.0f}s")
             except Exception as e:
                 log(f"Setup: vision setup failed ({e})")
                 rc = 1
+            else:
+                log(f"Setup: vision done in {time.time()-t0:.0f}s")
         return rc
 
     platform = cmd

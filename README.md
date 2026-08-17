@@ -38,13 +38,24 @@ Optional local VLM — only if the model consuming the output has no vision
 of its own (if it does, pass the Media files to it instead):
 
 ```bash
-pip install "scry-social[vision]"   # or: uv tool install "scry-social[vision]"
 scry setup --vision                # one-time: Qwen3.5-0.8B Q8_0 (~1.1GB)
 ```
-The `[vision]` extra (Qwen3.5-0.8B GGUF via llama.cpp, no torch) needs a C
-compiler (`build-essential`): llama-cpp-python compiles ggml from source
-at install time. In the pipeline it is opt-in too: without `-v` no VLM
-runs.
+`scry setup --vision` detects your accelerator (NVIDIA CUDA, AMD ROCm,
+Apple Metal, or CPU) and installs the matching **precompiled** llama.cpp
+wheel, then downloads the model. On supported GPUs there is no compilation:
+no C compiler needed. Force a backend with `--backend`:
+
+```bash
+scry setup --vision --backend rocm   # force ROCm (also: cuda, metal, cpu)
+```
+The CPU backend builds llama-cpp-python from source and needs a C compiler
+(`build-essential`); if the source build fails it falls back to a prebuilt
+basic-CPU wheel. Equivalently, `pip install "scry-social[vision]"` (or
+`uv tool install "scry-social[vision]"`) installs the vision dependencies up
+front — note that plain pip compiles the CPU build from source, and
+`scry setup --vision` then replaces it with the precompiled wheel if you
+have a supported GPU. In the pipeline the VLM is opt-in too: without `-v`
+no VLM runs.
 
 From source: `git clone <this-repo> && cd scry && pip install -e .`
 (add `[vision]` if you want the VLM).
@@ -61,7 +72,10 @@ how to use the tool — you don't need to remember anything else:
 
 ```bash
 scry setup                    # one-time: Camoufox browser
-scry setup --vision           # only if you installed the [vision] extra
+scry setup --vision           # only if you want the local VLM (-v): installs
+                              # the precompiled llama-cpp-python wheel for your
+                              # GPU (CUDA/ROCm/Metal) + the Qwen3.5-0.8B model
+scry setup --vision --backend rocm        # force a backend (auto|cuda|rocm|metal|cpu)
 scry skill --path ~/.agents/skills        # cross-harness standard location
 ```
 
@@ -230,6 +244,7 @@ scry/
   cli.py                CLI (tiktok|instagram|auto <url> [options], setup)
   common.py             sessions, URL parsing, paths, ffmpeg helpers, output
   stt.py                faster-whisper wrapper
+  gpu.py                GPU detection + precompiled llama-cpp-python wheel install
   vision.py             Qwen3.5-0.8B VLM wrapper (GGUF via llama-cpp-python, optional)
   browser.py            Camoufox wrapper (page open, comments popup, download)
   tiktok.py             TikTok pipeline
