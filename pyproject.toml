@@ -26,7 +26,6 @@ dependencies = [
     "curl_cffi==0.15.0",   # pinned: yt-dlp supports 0.5.10 or 0.10.x-0.15.x
     "camoufox[geoip]>=0.5",
     "faster-whisper>=1.1",
-    "httpx>=0.27",
     "gallery-dl>=1.29",
 ]
 

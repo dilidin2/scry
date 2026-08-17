@@ -221,7 +221,8 @@ screenshot/OCR.
 | `SCRY_CACHE_DIR` | `~/.cache/scry` | persistent model cache lives under `models/` here |
 | `SCRY_DATA_DIR` | `/tmp/scry` | where per-run data (downloads, reports) is stored |
 | `SCRY_CLEAN` | unset | `1` = wipe stale run data on every start |
-| `SCRY_IMPERSONATE` | `chrome136` | curl_cffi TLS impersonation target |
+| `SCRY_IMPERSONATE` | `chrome136` | TLS impersonation target for curl_cffi; the yt-dlp fallback derives its own spelling from it (`chrome136` -> `chrome-136`) |
+| `SCRY_IMPERSONATE_YTDLP` | derived | force a different `--impersonate` target for the yt-dlp fallback only |
 | `SCRY_COOKIES[_TIKTOK/_INSTAGRAM]` | `<plat>_cookies.txt` in cwd or `~/.config/scry/` | Netscape cookies file(s) |
 
 ## Limitations
