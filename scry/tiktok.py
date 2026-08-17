@@ -443,8 +443,9 @@ def render(r: dict) -> str:
 
     t = r.get("transcript")
     if t and t.get("text"):
+        load = f" (+{t['model_load_s']}s model load)" if (t.get("model_load_s") or 0) >= 1 else ""
         L.append(f"\n## Transcript (STT {t.get('model')}, lang={t.get('language')}, "
-                 f"{t.get('realtime_factor', '?')}x realtime)\n\n{t['text']}")
+                 f"{t.get('realtime_factor', '?')}x realtime{load})\n\n{t['text']}")
     elif t and t.get("error"):
         L.append(f"\n## Transcript\n\n_ERROR: {t['error']}_")
 

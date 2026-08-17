@@ -154,7 +154,8 @@ class Session:
         except Exception:
             return 0
 
-    def extract_comments(self, *, max_scrolls: int = 3, scroll_ms: int = 2500) -> list[dict]:
+    def extract_comments(self, *, max_scrolls: int = 3, min_comments: int = 0,
+                         scroll_ms: int = 2500) -> list[dict]:
         """Extract the comments visible in the popup (JS in the live DOM).
 
         Returns [{cid, username, text, when, likes, images, is_reply}].
@@ -162,21 +163,32 @@ class Session:
         The scroll happens via JS on the popup's scrollable container
         (independent of the mouse position, which would otherwise scroll
         the feed behind the popup).
+
+        Stops early (before max_scrolls) once `min_comments` comments are
+        collected, or the list stops growing (two consecutive reads with
+        no new comment => end of list).
         """
         page = self.page
         results: list[dict] = []
+        stale = 0
         for i in range(max_scrolls + 1):
             batch = page.evaluate(EXTRACT_COMMENTS_JS)
             seen = {c["cid"] for c in results}
+            new = 0
             for c in batch:
                 if c["cid"] not in seen:
                     results.append(c)
-            if i < max_scrolls:
-                try:
-                    page.evaluate(SCROLL_COMMENTS_JS)
-                    page.wait_for_timeout(scroll_ms)
-                except Exception:
-                    break
+                    new += 1
+            stale = 0 if new else stale + 1
+            if i == max_scrolls:
+                break
+            if (min_comments and len(results) >= min_comments) or stale >= 2:
+                break
+            try:
+                page.evaluate(SCROLL_COMMENTS_JS)
+                page.wait_for_timeout(scroll_ms)
+            except Exception:
+                break
         log(f"Browser: {len(results)} comments extracted from the DOM")
         return results
 
