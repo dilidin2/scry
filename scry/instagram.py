@@ -438,12 +438,18 @@ def process(url: str, *, do_stt: bool = True, do_vision: bool = False,
     if media_files:
         result["media_files"] = media_files
 
-    # ---- STT (video) --------------------------------------------------------
+    # ---- Video duration + STT -----------------------------------------------
+    if video_path:
+        dur = round(video_duration(video_path), 1)
+        result["video_duration_s"] = dur
+        if dur <= 0:
+            result["video_error"] = ("downloaded file is not a valid video "
+                                     "(ffprobe found no duration) - corrupted "
+                                     "download?")
     if video_path and do_stt:
         wav = str(outdir / f"{code}.wav")
         log("Instagram: extracting audio...")
         if extract_audio(video_path, wav):
-            result["video_duration_s"] = round(video_duration(video_path), 1)
             log(f"Instagram: STT (model {stt_model})...")
             from .stt import transcribe
             result["transcript"] = transcribe(wav, model=stt_model, language=language)
@@ -537,6 +543,8 @@ def render(r: dict) -> str:
     dl = r.get("download")
     if dl and dl.get("note") and dl["note"] != "ok":
         L.append(f"\n> ⚠️ {dl['note']}")
+    if r.get("video_error"):
+        L.append(f"\n> ⚠️ {r['video_error']}")
 
     o = r.get("vision") or {}
     if o:

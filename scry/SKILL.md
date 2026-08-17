@@ -44,7 +44,9 @@ scry setup --vision               # installs the precompiled llama-cpp-python
 scry setup --vision --backend rocm  # force a backend (auto|cuda|rocm|metal|cpu)
 ```
 
-External dependencies: system `ffmpeg`/`ffprobe`. A C compiler is optional:
+External dependencies: system `ffmpeg`/`ffprobe` (missing = scry fails fast
+with an install hint, exit code 3, before any network work; `--no-download`
+needs no ffmpeg). A C compiler is optional:
 it is only used by `--backend cpu` to build a tuned llama-cpp-python from
 source; without one `scry setup --vision` falls back to a prebuilt basic-CPU
 wheel, and on supported GPUs it downloads a precompiled wheel instead. Models

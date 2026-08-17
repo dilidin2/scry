@@ -370,7 +370,12 @@ def process(url: str, *, do_stt: bool = True, do_comments: bool = True,
                                      video_id, ck, gears)
         result["download"] = {"path": vpath, "note": note}
         if vpath:
-            result["video_duration_s"] = round(video_duration(vpath), 1)
+            dur = round(video_duration(vpath), 1)
+            result["video_duration_s"] = dur
+            if dur <= 0:
+                result["video_error"] = ("downloaded file is not a valid video "
+                                         "(ffprobe found no duration) - corrupted "
+                                         "download?")
             if do_stt:
                 wav = str(outdir / f"{video_id}.wav")
                 log("TikTok: extracting audio...")
@@ -446,6 +451,8 @@ def render(r: dict) -> str:
     dl = r.get("download")
     if dl and not dl.get("path"):
         L.append(f"\n> ⚠️ Video download failed: {dl.get('note')}")
+    if r.get("video_error"):
+        L.append(f"\n> ⚠️ {r['video_error']}")
 
     mf = r.get("media_files") or []
     if mf:

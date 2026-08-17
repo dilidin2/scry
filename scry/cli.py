@@ -158,6 +158,17 @@ def main() -> int:
             return 2
         platform = info["platform"]
 
+    if not args.no_download:
+        from .common import missing_media_tools
+        missing = missing_media_tools()
+        if missing:
+            print(f"scry: {' and '.join(missing)} not found on PATH. Install "
+                  f"ffmpeg (Debian/Ubuntu: 'sudo apt install ffmpeg'; macOS: "
+                  f"'brew install ffmpeg') and re-run — STT and frame "
+                  f"extraction need it. Use --no-download for metadata+comments only.",
+                  file=sys.stderr)
+            return 3
+
     kwargs = dict(
         do_stt=not args.no_stt,
         do_comments=not args.no_comments,
