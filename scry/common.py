@@ -11,6 +11,7 @@ import os
 import re
 import shlex
 import shutil
+import sys
 import subprocess
 import tempfile
 import time
@@ -287,4 +288,5 @@ def ts() -> str:
 
 
 def log(msg: str) -> None:
-    print(f"[{ts()}] {msg}", flush=True)
+    """Progress line -> stderr, so stdout stays clean (--json = JSON only)."""
+    print(f"[{ts()}] {msg}", file=sys.stderr, flush=True)
