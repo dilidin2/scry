@@ -30,6 +30,13 @@ MODEL_FILE = "Qwen3.5-0.8B-Q8_0.gguf"
 MMPROJ_FILE = "mmproj-F16.gguf"
 MODEL_LABEL = "Qwen3.5-0.8B (Q8_0)"
 
+# Exact byte size of each file in MODEL_REPO. A partial download can only be
+# smaller than this, so comparing against the known size detects interrupted
+# downloads (an existence/"bigger than 100KB" check would silently accept a
+# truncated file, which then fails to load with a cryptic error). If a file
+# is ever re-uploaded on the Hub, update these numbers too.
+EXPECTED_SIZES = {MODEL_FILE: 811_843_840, MMPROJ_FILE: 204_987_232}
+
 # Qwen3.5-0.8B ha il thinking OFF di default (a differenza dei modelli 27B+
 # usati altrove nel progetto). Nessun chat_template_kwargs necessario: il
 # default e' gia' quello che vogliamo, letto dal template Jinja embedded nel
@@ -55,19 +62,30 @@ def setup_vision() -> None:
     d.mkdir(parents=True, exist_ok=True)
     for f in (MODEL_FILE, MMPROJ_FILE):
         dest = d / f
-        if dest.exists() and dest.stat().st_size > 100_000:
-            log(f"Vision: {f} already present")
-            continue
+        if dest.exists():
+            size = dest.stat().st_size
+            if size == EXPECTED_SIZES[f]:
+                log(f"Vision: {f} already present")
+                continue
+            # Truncated download or stale file: re-download. hf_hub_download
+            # verifies the LFS sha256, replaces the outdated file itself,
+            # and resumes any existing .incomplete file.
+            log(f"Vision: {f} is {size} bytes (expected "
+                f"{EXPECTED_SIZES[f]}) - incomplete or outdated, re-downloading")
         log(f"Vision: downloading {f} from {MODEL_REPO} ...")
         hf_hub_download(repo_id=MODEL_REPO, filename=f, local_dir=str(d))
     log(f"Vision: model ready in {d}")
 
 
 def vision_available() -> bool:
-    """True if the [vision] deps are installed and the model is downloaded."""
+    """True if the [vision] deps are installed and the model files are
+    present at their exact expected size (i.e. fully downloaded, not
+    truncated)."""
     d = model_dir()
-    if not (d / MODEL_FILE).exists() or not (d / MMPROJ_FILE).exists():
-        return False
+    for f in (MODEL_FILE, MMPROJ_FILE):
+        p = d / f
+        if not p.exists() or p.stat().st_size != EXPECTED_SIZES[f]:
+            return False
     try:
         import llama_cpp  # noqa: F401
         from llama_cpp.llama_chat_format import MTMDChatHandler  # noqa: F401
