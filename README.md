@@ -99,6 +99,55 @@ in a scanned skills directory, your harness presents it on demand — the
 skill contains the full usage guide, output-reading procedure, cookie
 handling, and reliability checks.
 
+## Uninstall (removing scry from your machine)
+
+Everything scry ever writes to your disk is listed below — it touches
+nothing else. **Quick removal** (default install, Linux/macOS):
+
+```bash
+uv tool uninstall scry-social      # or: pip uninstall scry-social
+rm -rf ~/.cache/camoufox           # anti-detect browser (~200MB)
+rm -rf ~/.cache/scry               # STT + VLM models (~1.6GB)
+rm -rf ~/.config/scry              # cookie files (your sessions!)
+rm -rf /tmp/scry                   # per-run data (gone on reboot anyway)
+```
+
+### Where each piece lives
+
+| Artifact | Location | Remove with |
+|---|---|---|
+| Python package + dependencies | the environment you installed `scry-social` into | `pip uninstall scry-social` or `uv tool uninstall scry-social` |
+| Camoufox browser, ~200MB (only if you ran `scry setup`) | `~/.cache/camoufox/` — macOS: `~/Library/Caches/camoufox/`, Windows: `%LOCALAPPDATA%\camoufox` | `rm -rf ~/.cache/camoufox` |
+| Models: Whisper ~600MB + Qwen3.5-0.8B ~1GB (only if you used STT or `-v`) | `~/.cache/scry/models/` (`$SCRY_CACHE_DIR/models/` if overridden) | `rm -rf ~/.cache/scry/models` |
+| Cookie files (`tiktok_cookies.txt`, `instagram_cookies.txt`) | the current directory where you installed it, or `~/.config/scry/`, or wherever `SCRY_COOKIES*` points | `rm` them, or `rm -rf ~/.config/scry` |
+| Per-run data (media, audio, reports) | `/tmp/scry/` (`$SCRY_DATA_DIR` if overridden) | `rm -rf /tmp/scry` — already auto-cleared on reboot |
+| Agent skill (only if you ran `scry skill --path DIR`) | `DIR/scry/SKILL.md` | `rm -rf DIR/scry` (e.g. `~/.agents/skills/scry`, `~/.claude/skills/scry`) |
+| `llama-cpp-python` wheel (only if you used the vision stack) | the same environment as `scry` | `pip uninstall llama-cpp-python` in that environment |
+
+Notes:
+
+- **Cookies are the only sensitive item.** They are a session export of
+  your TikTok/Instagram accounts. Deleting the files removes them from
+  your disk, but to be thorough revoke the session itself (log out and
+  back in on the platform).
+- `uv tool install` keeps scry in an isolated venv
+  (`~/.local/share/uv/tools/scry-social`): `uv tool uninstall scry-social`
+  removes the venv *and* the `scry` executable, so the package, its
+  dependencies, and (if you set up vision there) the llama-cpp wheel all
+  disappear in one step.
+- For an editable install from source (`pip install -e .`): run
+  `pip uninstall scry-social` inside that venv, then delete the venv and
+  the clone if you made them just for this.
+- `ffmpeg`/`ffprobe` are a system requirement you installed separately
+  (e.g. `apt install ffmpeg`); remove them with your package manager only
+  if nothing else on the machine needs them.
+- A little download metadata may remain in `~/.cache/huggingface/` from
+  the model downloads — safe to delete if you don't use other Hugging
+  Face tools.
+- Windows: replace `rm -rf X` with `Remove-Item -Recurse -Force X` (PowerShell);
+  `~/.cache/scry` and `~/.config/scry` are literal paths under
+  `C:\Users\<you>\`.
+
 ## Usage
 
 ```bash
